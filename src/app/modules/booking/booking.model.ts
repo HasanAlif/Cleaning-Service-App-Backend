@@ -24,6 +24,8 @@ export interface IBooking extends Document {
   status: BookingStatus;
   completionCode?: string;
   qrCodeUrl?: string;
+  rating?: number;
+  review?: string;
   payment: {
     method: PaymentMethod;
     status: PaymentStatus;
@@ -75,6 +77,15 @@ const BookingSchema = new Schema<IBooking>(
     },
     completionCode: { type: String, trim: true },
     qrCodeUrl: { type: String, trim: true },
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+    },
+    review: {
+      type: String,
+      trim: true,
+    },
     payment: {
       method: { type: String, enum: ["STRIPE"], required: true },
       status: {

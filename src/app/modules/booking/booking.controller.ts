@@ -212,6 +212,38 @@ const getProviderAllCancelledBookings = catchAsync(async (req, res) => {
   });
 });
 
+const getRatingAndReviewPage = catchAsync(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await bookingService.getRatingAndReviewPage(id);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Rating and review page data retrieved successfully",
+    data: result,
+  });
+});
+
+const giveRatingAndReview = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { rating, review } = req.body;
+
+  const result = await bookingService.giveRatingAndReview(
+    id,
+    req.user.id,
+    rating,
+    review
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Rating and review submitted successfully",
+    data: result,
+  });
+});
+
 export const bookingController = {
   createBooking,
   getMyBookings,
@@ -229,4 +261,6 @@ export const bookingController = {
   getOwnerAllOngoingBookings,
   getOwnerAllCancelledBookings,
   getProviderAllCancelledBookings,
+  getRatingAndReviewPage,
+  giveRatingAndReview,
 };

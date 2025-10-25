@@ -115,4 +115,18 @@ router.patch(
   bookingController.completeBookingByQRCode
 );
 
+router.post(
+  "/rating-review/:id",
+  auth(UserRole.OWNER),
+  validateRequest(bookingValidation.giveRatingAndReviewSchema),
+  bookingController.giveRatingAndReview
+);
+
+router.get(
+  "/rating-review-page/:id",
+  auth(UserRole.OWNER),
+  validateRequest(bookingValidation.getBookingSchema),
+  bookingController.getRatingAndReviewPage
+);
+
 export const bookingRoutes = router;

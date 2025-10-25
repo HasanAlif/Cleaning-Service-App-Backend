@@ -662,8 +662,6 @@ const getOwnerAllCancelledBookings = async (ownerId: string) => {
   return transformedBookings;
 };
 
-
-
 const getProviderAllCancelledBookings = async (providerId: string) => {
   const bookings = await Booking.find({
     providerId: providerId,
@@ -684,9 +682,121 @@ const getProviderAllCancelledBookings = async (providerId: string) => {
     status: booking.status,
   }));
 
-
-
   return transformedBookings;
+};
+
+const getRatingAndReviewPage = async (bookingId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid booking ID");
+  }
+
+  // Find the booking and populate provider details
+  const booking = await Booking.findById(bookingId).populate(
+    "providerId",
+    "userName"
+  );
+
+  if (!booking) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Booking not found");
+  }
+
+  const provider = booking.providerId as any;
+
+  return {
+    providerName: provider.userName,
+  };
+};
+
+const giveRatingAndReview = async (
+  bookingId: string,
+  customerId: string,
+  rating: number,
+  review: string
+) => {
+  if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid booking ID");
+  }
+
+  if (rating < 1 || rating > 5) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Rating must be between 1 and 5"
+    );
+  }
+
+  const booking = await Booking.findById(bookingId).populate("serviceId");
+
+  if (!booking) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Booking not found");
+  }
+
+  if (booking.customerId.toString() !== customerId) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      "You can only rate your own bookings"
+    );
+  }
+
+  if (booking.status !== "COMPLETED") {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Only completed bookings can be rated and reviewed"
+    );
+  }
+
+  if (booking.rating || booking.review) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "This booking has already been rated and reviewed"
+    );
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    const updatedBooking = await Booking.findByIdAndUpdate(
+      bookingId,
+      {
+        rating: rating,
+        review: review,
+      },
+      { new: true, session }
+    );
+
+    const service = await Service.findById(booking.serviceId).session(session);
+    if (service) {
+      const currentRatingsCount = service.ratingsCount || 0;
+      const currentRatingsAverage = service.ratingsAverage || 0;
+
+      // Calculate new average rating
+      const newRatingsCount = currentRatingsCount + 1;
+      const newRatingsAverage =
+        (currentRatingsAverage * currentRatingsCount + rating) /
+        newRatingsCount;
+
+      await Service.findByIdAndUpdate(
+        booking.serviceId,
+        {
+          ratingsAverage: parseFloat(newRatingsAverage.toFixed(2)),
+          ratingsCount: newRatingsCount,
+        },
+        { session }
+      );
+    }
+
+    await session.commitTransaction();
+
+    return {
+      rating: rating,
+      review: review,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
 };
 
 export const bookingService = {
@@ -706,4 +816,6 @@ export const bookingService = {
   getProviderAllOngoingBookings,
   getOwnerAllCancelledBookings,
   getProviderAllCancelledBookings,
+  getRatingAndReviewPage,
+  giveRatingAndReview,
 };

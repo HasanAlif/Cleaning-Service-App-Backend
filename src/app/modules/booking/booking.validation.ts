@@ -95,10 +95,35 @@ const completeBookingByQRSchema = z.object({
   }),
 });
 
+const giveRatingAndReviewSchema = z.object({
+  params: z.object({
+    id: z
+      .string({
+        required_error: "Booking ID is required",
+      })
+      .min(1, "Booking ID cannot be empty"),
+  }),
+  body: z.object({
+    rating: z
+      .number({
+        required_error: "Rating is required",
+      })
+      .min(1, "Rating must be at least 1")
+      .max(5, "Rating cannot exceed 5"),
+    review: z
+      .string({
+        required_error: "Review is required",
+      })
+      .min(10, "Review must be at least 10 characters")
+      .max(1000, "Review cannot exceed 1000 characters"),
+  }),
+});
+
 export const bookingValidation = {
   createBookingSchema,
   getBookingsSchema,
   getBookingSchema,
   updateBookingStatusSchema,
   completeBookingByQRSchema,
+  giveRatingAndReviewSchema,
 };
