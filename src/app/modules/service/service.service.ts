@@ -489,6 +489,42 @@ const getServiceProviderDetails = async (serviceId: string) => {
   return providerDetails;
 };
 
+const getServiceRatingAndReview = async (serviceId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(serviceId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid service ID");
+  }
+
+  const service = await Service.findById(serviceId);
+
+  if (!service) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
+  }
+
+  // Import Booking model
+  const { Booking } = require("../booking/booking.model");
+
+  // Find all bookings for this service that have ratings and reviews
+  const bookingsWithReviews = await Booking.find({
+    serviceId: serviceId,
+    rating: { $exists: true, $ne: null },
+    review: { $exists: true, $ne: null },
+  })
+    .populate("customerId", "userName profilePicture")
+    .select("customerId rating review createdAt")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Transform the data to show owner details with their ratings and reviews
+  const reviews = bookingsWithReviews.map((booking: any) => ({
+    ownerName: booking.customerId?.userName || "Unknown User",
+    ownerProfilePicture: booking.customerId?.profilePicture || null,
+    rating: booking.rating,
+    review: booking.review,
+  }));
+
+  return reviews;
+};
+
 const getServiceProviderSchedule = async (serviceId: string) => {
   if (!mongoose.Types.ObjectId.isValid(serviceId)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid service ID");
@@ -515,5 +551,6 @@ export const serviceService = {
   getServiceById,
   updateService,
   deleteService,
+  getServiceRatingAndReview,
   getServiceProviderSchedule,
 };

@@ -83,4 +83,11 @@ router.get(
   serviceController.getServiceProviderSchedule
 );
 
+router.get(
+  "/ratings-reviews/:id",
+  auth(UserRole.OWNER),
+  validateRequest(serviceValidation.getServiceSchema),
+  serviceController.getServiceRatingAndReview
+);
+
 export const serviceRoutes = router;

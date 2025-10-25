@@ -152,6 +152,20 @@ const getServiceProviderSchedule = catchAsync(
   }
 );
 
+const getServiceRatingAndReview = catchAsync(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const result = await serviceService.getServiceRatingAndReview(id);
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Service ratings and reviews retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 export const serviceController = {
   getCategories,
   createService,
@@ -164,4 +178,5 @@ export const serviceController = {
   getServiceOverview,
   getServiceProviderDetails,
   getServiceProviderSchedule,
+  getServiceRatingAndReview,
 };

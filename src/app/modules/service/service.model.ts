@@ -31,6 +31,13 @@ export interface IService extends Document {
   workSchedule?: IWorkSchedule;
   ratingsAverage?: number;
   ratingsCount?: number;
+  ratingsBreakdown?: {
+    5: number;
+    4: number;
+    3: number;
+    2: number;
+    1: number;
+  };
   reviews?: string[];
   totalOrders?: number;
   createdAt: Date;
