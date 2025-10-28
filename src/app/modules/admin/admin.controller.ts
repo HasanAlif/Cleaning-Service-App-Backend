@@ -121,6 +121,18 @@ const getRecentUsers = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getIndividualUserDetails = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await adminService.getIndividualUserDetails(id);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User retrieved successfully",
+    data: result,
+  });
+});
+
 export const adminController = {
   createCategory,
   getCategories,
@@ -129,4 +141,5 @@ export const adminController = {
   deleteCategory,
   getTotalCount,
   getRecentUsers,
+  getIndividualUserDetails,
 };

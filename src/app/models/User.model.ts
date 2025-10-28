@@ -25,6 +25,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   referralCode?: string;
+  referredBy?: string; // User ID of the person who referred this user
   lattitude?: number;
   longitude?: number;
   resultRange?: number;
@@ -75,6 +76,11 @@ const UserSchema = new Schema<IUser>(
     referralCode: {
       type: String,
       trim: true,
+    },
+    referredBy: {
+      type: String,
+      trim: true,
+      default: null,
     },
     role: {
       type: String,

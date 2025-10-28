@@ -61,10 +61,19 @@ const getCategoriesQuerySchema = z.object({
   }),
 });
 
+const getUserSchema = z.object({
+  params: z.object({
+    id: z
+      .string({ required_error: "User ID is required" })
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid user ID format"),
+  }),
+});
+
 export const adminValidation = {
   createCategorySchema,
   updateCategorySchema,
   getCategorySchema,
   deleteCategorySchema,
   getCategoriesQuerySchema,
+  getUserSchema,
 };

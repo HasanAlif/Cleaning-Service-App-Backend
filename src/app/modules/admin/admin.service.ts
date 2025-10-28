@@ -298,10 +298,52 @@ const recentJoinedUsers = async (limit: number = 6) => {
   return users;
 };
 
+const getIndividualUserDetails = async (userId: string) => {
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
+  }
+
+  const user = await User.findById(userId).select(
+    "_id userName email role phoneNumber address createdAt experience aboutMe NIDFront referredBy"
+  );
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  if (user.role === "OWNER") {
+    return {
+      _id: user._id,
+      userName: user.userName,
+      role: user.role,
+      createdAt: user.createdAt,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      address: user.address,
+      referredBy: user.referredBy || null,
+    };
+  } else if (user.role === "PROVIDER") {
+    return {
+      _id: user._id,
+      userName: user.userName,
+      role: user.role,
+      createdAt: user.createdAt,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      address: user.address,
+      experience: user.experience,
+      aboutMe: user.aboutMe,
+      referredBy: user.referredBy || null,
+      NIDFront: user.NIDFront,
+    };
+  }
+};
+
 export const adminService = {
   createCategory,
   getCategories,
   getCategoryById,
+  getIndividualUserDetails,
   totalCount,
   recentJoinedUsers,
   updateCategory,

@@ -60,4 +60,11 @@ router.delete(
   adminController.deleteCategory
 );
 
+router.get(
+  "/users/:id",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.getUserSchema),
+  adminController.getIndividualUserDetails
+);
+
 export const adminRoutes = router;
