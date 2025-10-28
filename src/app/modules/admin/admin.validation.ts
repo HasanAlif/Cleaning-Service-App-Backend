@@ -69,6 +69,16 @@ const getUserSchema = z.object({
   }),
 });
 
+const searchUsersSchema = z.object({
+  params: z.object({
+    searchTerm: z
+      .string({ required_error: "Search term is required" })
+      .min(1, "Search term must be at least 1 character")
+      .max(100, "Search term must not exceed 100 characters")
+      .trim(),
+  }),
+});
+
 export const adminValidation = {
   createCategorySchema,
   updateCategorySchema,
@@ -76,4 +86,5 @@ export const adminValidation = {
   deleteCategorySchema,
   getCategoriesQuerySchema,
   getUserSchema,
+  searchUsersSchema,
 };

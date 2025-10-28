@@ -362,6 +362,76 @@ const getAllProviders = async () => {
   return providers;
 };
 
+const searchUsers = async (searchTerm: string) => {
+  if (!searchTerm || searchTerm.trim() === "") {
+    return [];
+  }
+
+  const trimmedSearch = searchTerm.trim();
+  const regex = new RegExp(trimmedSearch, "i");
+
+  // Find all matching users
+  const users = await User.find({
+    isDeleted: { $ne: true },
+    $or: [{ userName: regex }, { email: regex }, { phoneNumber: regex }],
+  }).select(
+    "_id profilePicture userName role createdAt phoneNumber email address"
+  );
+
+  // Sort results by match priority
+  const sortedUsers = users.sort((a, b) => {
+    const searchLower = trimmedSearch.toLowerCase();
+
+    // Calculate match scores for user A
+    const aUserNameLower = (a.userName || "").toLowerCase();
+    const aEmailLower = (a.email || "").toLowerCase();
+    const aPhoneLower = (a.phoneNumber || "").toLowerCase();
+
+    let scoreA = 0;
+    // Exact match (highest priority)
+    if (aUserNameLower === searchLower) scoreA = 1000;
+    else if (aEmailLower === searchLower) scoreA = 900;
+    else if (aPhoneLower === searchLower) scoreA = 800;
+    // Starts with match (second priority)
+    else if (aUserNameLower.startsWith(searchLower)) scoreA = 700;
+    else if (aEmailLower.startsWith(searchLower)) scoreA = 600;
+    else if (aPhoneLower.startsWith(searchLower)) scoreA = 500;
+    // Contains match (lowest priority)
+    else if (aUserNameLower.includes(searchLower)) scoreA = 400;
+    else if (aEmailLower.includes(searchLower)) scoreA = 300;
+    else if (aPhoneLower.includes(searchLower)) scoreA = 200;
+
+    // Calculate match scores for user B
+    const bUserNameLower = (b.userName || "").toLowerCase();
+    const bEmailLower = (b.email || "").toLowerCase();
+    const bPhoneLower = (b.phoneNumber || "").toLowerCase();
+
+    let scoreB = 0;
+    // Exact match (highest priority)
+    if (bUserNameLower === searchLower) scoreB = 1000;
+    else if (bEmailLower === searchLower) scoreB = 900;
+    else if (bPhoneLower === searchLower) scoreB = 800;
+    // Starts with match (second priority)
+    else if (bUserNameLower.startsWith(searchLower)) scoreB = 700;
+    else if (bEmailLower.startsWith(searchLower)) scoreB = 600;
+    else if (bPhoneLower.startsWith(searchLower)) scoreB = 500;
+    // Contains match (lowest priority)
+    else if (bUserNameLower.includes(searchLower)) scoreB = 400;
+    else if (bEmailLower.includes(searchLower)) scoreB = 300;
+    else if (bPhoneLower.includes(searchLower)) scoreB = 200;
+
+    // Sort by score (descending - highest score first)
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA;
+    }
+
+    // If scores are equal, sort alphabetically by userName
+    return aUserNameLower.localeCompare(bUserNameLower);
+  });
+
+  return sortedUsers;
+};
+
 export const adminService = {
   createCategory,
   getCategories,
@@ -373,4 +443,5 @@ export const adminService = {
   deleteCategory,
   getAllOwners,
   getAllProviders,
+  searchUsers,
 };

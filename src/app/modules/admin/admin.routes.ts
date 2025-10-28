@@ -30,6 +30,13 @@ router.get("/owners", auth(UserRole.ADMIN), adminController.getAllOwners);
 
 router.get("/providers", auth(UserRole.ADMIN), adminController.getAllProviders);
 
+router.get(
+  "/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchUsersSchema),
+  adminController.searchUsers
+);
+
 // Category management routes
 router.post(
   "/categories",

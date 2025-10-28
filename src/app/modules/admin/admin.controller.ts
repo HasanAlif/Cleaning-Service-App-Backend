@@ -157,6 +157,19 @@ const getAllProviders = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const searchUsers = catchAsync(async (req: Request, res: Response) => {
+  const { searchTerm } = req.params;
+
+  const result = await adminService.searchUsers(searchTerm);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Users retrieved successfully",
+    data: result,
+  });
+});
+
 export const adminController = {
   createCategory,
   getCategories,
@@ -168,4 +181,5 @@ export const adminController = {
   getIndividualUserDetails,
   getAllOwners,
   getAllProviders,
+  searchUsers,
 };
