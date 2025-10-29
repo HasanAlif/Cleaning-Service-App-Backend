@@ -34,6 +34,12 @@ router.get(
   adminController.getOwnerProfileStatus
 );
 
+router.get(
+  "/providers/profile-status",
+  auth(UserRole.ADMIN),
+  adminController.getProviderProfileStatus
+);
+
 router.get("/providers", auth(UserRole.ADMIN), adminController.getAllProviders);
 
 router.get(

@@ -663,6 +663,54 @@ const ownerProfileStatus = async () => {
   return ownersWithStats;
 };
 
+const providerProfileStatus = async () => {
+  const providers = await User.find({
+    role: "PROVIDER",
+    isDeleted: { $ne: true },
+  })
+    .select("_id profilePicture userName role email phoneNumber")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const providersWithStats = await Promise.all(
+    providers.map(async (provider: any) => {
+      const totalOrders = await Booking.countDocuments({
+        providerId: provider._id,
+      });
+
+      const completedOrders = await Booking.countDocuments({
+        providerId: provider._id,
+        status: "COMPLETED",
+      });
+
+      const pendingOrders = await Booking.countDocuments({
+        providerId: provider._id,
+        status: { $in: ["PENDING", "ACCEPTED", "IN_PROGRESS"] },
+      });
+
+      const cancelledOrders = await Booking.countDocuments({
+        providerId: provider._id,
+        status: "CANCELLED",
+      });
+
+      return {
+        _id: provider._id,
+        profilePicture: provider.profilePicture,
+        userName: provider.userName,
+        role: provider.role,
+        email: provider.email,
+        phoneNumber: provider.phoneNumber,
+        completed: completedOrders,
+        pending: pendingOrders,
+        cancelled: cancelledOrders,
+        total: totalOrders,
+      };
+    })
+  );
+
+  return providersWithStats;
+};
+
 export const adminService = {
   createCategory,
   getCategories,
@@ -679,4 +727,5 @@ export const adminService = {
   changeUserStatus,
   bookingUserOverview,
   ownerProfileStatus,
+  providerProfileStatus,
 };

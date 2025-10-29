@@ -224,6 +224,19 @@ const getOwnerProfileStatus = catchAsync(
   }
 );
 
+const getProviderProfileStatus = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await adminService.providerProfileStatus();
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Provider profile status retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 export const adminController = {
   createCategory,
   getCategories,
@@ -240,4 +253,5 @@ export const adminController = {
   changeUserStatus,
   getBookingUserOverview,
   getOwnerProfileStatus,
+  getProviderProfileStatus,
 };
