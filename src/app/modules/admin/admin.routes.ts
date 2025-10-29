@@ -50,6 +50,13 @@ router.get(
 );
 
 router.get(
+  "/bookings/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchBookingRequestsSchema),
+  adminController.searchBookingRequests
+);
+
+router.get(
   "/bookings",
   auth(UserRole.ADMIN),
   adminController.getBookingRequestOverview

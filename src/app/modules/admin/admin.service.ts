@@ -6,6 +6,7 @@ import { Types } from "mongoose";
 import { fileUploader } from "../../../helpers/fileUploader";
 import { User } from "../../models/User.model";
 import { Booking } from "../booking/booking.model";
+import { Service } from "../service/service.model";
 
 const createCategory = async (
   categoryData: Partial<ICategory>
@@ -467,6 +468,130 @@ const bookingRequestOverview = async () => {
   return formattedBookings;
 };
 
+const searchBookingRequestOverview = async (searchTerm: string) => {
+  if (!searchTerm || searchTerm.trim() === "") {
+    return [];
+  }
+
+  const trimmedSearch = searchTerm.trim();
+  const regex = new RegExp(trimmedSearch, "i");
+
+  const matchingUsers = await User.find({
+    isDeleted: { $ne: true },
+    $or: [{ userName: regex }, { email: regex }, { phoneNumber: regex }],
+  }).select("_id");
+
+  const userIds = matchingUsers.map((user) => user._id);
+
+  const matchingCategories = await Category.find({
+    name: regex,
+  }).select("_id");
+
+  const categoryIds = matchingCategories.map((cat) => cat._id);
+
+  const searchQuery: any = {
+    $or: [],
+  };
+
+  if (userIds.length > 0) {
+    searchQuery.$or.push(
+      { customerId: { $in: userIds } },
+      { providerId: { $in: userIds } }
+    );
+  }
+
+  if (categoryIds.length > 0) {
+    const matchingServices = await Service.find({
+      categoryId: { $in: categoryIds },
+    }).select("_id");
+
+    const serviceIds = matchingServices.map((service: any) => service._id);
+
+    if (serviceIds.length > 0) {
+      searchQuery.$or.push({ serviceId: { $in: serviceIds } });
+    }
+  }
+
+  if (searchQuery.$or.length === 0) {
+    return [];
+  }
+
+  // Find bookings matching the search criteria
+  const bookings = await Booking.find(searchQuery)
+    .populate({
+      path: "customerId",
+      select: "userName",
+    })
+    .populate({
+      path: "providerId",
+      select: "userName",
+    })
+    .populate({
+      path: "serviceId",
+      select: "categoryId",
+      populate: {
+        path: "categoryId",
+        select: "name",
+      },
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Format the results
+  const formattedBookings = bookings.map((booking: any) => ({
+    ownerName: booking.customerId?.userName,
+    providerName: booking.providerId?.userName,
+    bookingDate: booking.scheduledAt,
+    category: booking.serviceId?.categoryId?.name,
+    amount: booking.totalAmount,
+    serviceDuration: booking.serviceDuration,
+    status: booking.status,
+  }));
+
+  const searchLower = trimmedSearch.toLowerCase();
+  const sortedBookings = formattedBookings.sort((a: any, b: any) => {
+    const aOwnerLower = (a.ownerName || "").toLowerCase();
+    const aProviderLower = (a.providerName || "").toLowerCase();
+    const aCategoryLower = (a.category || "").toLowerCase();
+
+    const bOwnerLower = (b.ownerName || "").toLowerCase();
+    const bProviderLower = (b.providerName || "").toLowerCase();
+    const bCategoryLower = (b.category || "").toLowerCase();
+
+    let scoreA = 0;
+    if (aOwnerLower === searchLower) scoreA = 1000;
+    else if (aProviderLower === searchLower) scoreA = 900;
+    else if (aCategoryLower === searchLower) scoreA = 800;
+    else if (aOwnerLower.startsWith(searchLower)) scoreA = 700;
+    else if (aProviderLower.startsWith(searchLower)) scoreA = 600;
+    else if (aCategoryLower.startsWith(searchLower)) scoreA = 500;
+    else if (aOwnerLower.includes(searchLower)) scoreA = 400;
+    else if (aProviderLower.includes(searchLower)) scoreA = 300;
+    else if (aCategoryLower.includes(searchLower)) scoreA = 200;
+
+    let scoreB = 0;
+    if (bOwnerLower === searchLower) scoreB = 1000;
+    else if (bProviderLower === searchLower) scoreB = 900;
+    else if (bCategoryLower === searchLower) scoreB = 800;
+    else if (bOwnerLower.startsWith(searchLower)) scoreB = 700;
+    else if (bProviderLower.startsWith(searchLower)) scoreB = 600;
+    else if (bCategoryLower.startsWith(searchLower)) scoreB = 500;
+    else if (bOwnerLower.includes(searchLower)) scoreB = 400;
+    else if (bProviderLower.includes(searchLower)) scoreB = 300;
+    else if (bCategoryLower.includes(searchLower)) scoreB = 200;
+
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA;
+    }
+
+    return (
+      new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime()
+    );
+  });
+
+  return sortedBookings;
+};
+
 const changeUserStatus = async (userId: string, isActive: boolean) => {
   if (!Types.ObjectId.isValid(userId)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
@@ -766,4 +891,5 @@ export const adminService = {
   ownerProfileStatus,
   providerProfileStatus,
   bookingDetailsForSuspension,
+  searchBookingRequestOverview,
 };

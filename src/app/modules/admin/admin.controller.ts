@@ -183,6 +183,21 @@ const getBookingRequestOverview = catchAsync(
   }
 );
 
+const searchBookingRequests = catchAsync(
+  async (req: Request, res: Response) => {
+    const { searchTerm } = req.params;
+
+    const result = await adminService.searchBookingRequestOverview(searchTerm);
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Booking requests retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 const changeUserStatus = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { isActive } = req.body;
@@ -268,4 +283,5 @@ export const adminController = {
   getOwnerProfileStatus,
   getProviderProfileStatus,
   getBookingDetailsForSuspension,
+  searchBookingRequests,
 };
