@@ -237,6 +237,19 @@ const getProviderProfileStatus = catchAsync(
   }
 );
 
+const getBookingDetailsForSuspension = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await adminService.bookingDetailsForSuspension();
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Booking details for suspension retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 export const adminController = {
   createCategory,
   getCategories,
@@ -254,4 +267,5 @@ export const adminController = {
   getBookingUserOverview,
   getOwnerProfileStatus,
   getProviderProfileStatus,
+  getBookingDetailsForSuspension,
 };

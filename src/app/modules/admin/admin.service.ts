@@ -711,6 +711,43 @@ const providerProfileStatus = async () => {
   return providersWithStats;
 };
 
+const bookingDetailsForSuspension = async () => {
+  const bookings = await Booking.find({ status: "COMPLETED" })
+    .populate({
+      path: "customerId",
+      select: "userName profilePicture email status",
+    })
+    .populate({
+      path: "providerId",
+      select: "userName profilePicture email status",
+    })
+    .populate({
+      path: "serviceId",
+      select: "categoryId",
+      populate: {
+        path: "categoryId",
+        select: "name",
+      },
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const formattedBookings = bookings.map((booking: any) => ({
+    ownerUserName: booking.customerId?.userName,
+    ownerProfilePicture: booking.customerId?.profilePicture,
+    providerUserName: booking.providerId?.userName,
+    providerProfilePicture: booking.providerId?.profilePicture,
+    bookingDate: booking.scheduledAt,
+    ownerEmail: booking.customerId?.email,
+    providerEmail: booking.providerId?.email,
+    bookingService: booking.serviceId?.categoryId?.name,
+    rating: booking.rating,
+    providerAccountStatus: booking.providerId?.status,
+  }));
+
+  return formattedBookings;
+};
+
 export const adminService = {
   createCategory,
   getCategories,
@@ -728,4 +765,5 @@ export const adminService = {
   bookingUserOverview,
   ownerProfileStatus,
   providerProfileStatus,
+  bookingDetailsForSuspension,
 };

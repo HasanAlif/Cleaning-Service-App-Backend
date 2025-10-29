@@ -62,6 +62,12 @@ router.get(
   adminController.getBookingUserOverview
 );
 
+router.get(
+  "/account-suspension",
+  auth(UserRole.ADMIN),
+  adminController.getBookingDetailsForSuspension
+);
+
 // Category management routes
 router.post(
   "/categories",
