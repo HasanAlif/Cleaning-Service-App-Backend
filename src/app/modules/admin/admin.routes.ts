@@ -40,28 +40,7 @@ router.get(
   adminController.getProviderProfileStatus
 );
 
-router.get(
-  "/profile-status/search/:searchTerm",
-  auth(UserRole.ADMIN),
-  validateRequest(adminValidation.searchUsersSchema),
-  adminController.searchForProfileStatus
-);
-
 router.get("/providers", auth(UserRole.ADMIN), adminController.getAllProviders);
-
-router.get(
-  "/search/:searchTerm",
-  auth(UserRole.ADMIN),
-  validateRequest(adminValidation.searchUsersSchema),
-  adminController.searchUsers
-);
-
-router.get(
-  "/bookings/search/:searchTerm",
-  auth(UserRole.ADMIN),
-  validateRequest(adminValidation.searchBookingRequestsSchema),
-  adminController.searchBookingRequests
-);
 
 router.get(
   "/bookings",
@@ -70,23 +49,22 @@ router.get(
 );
 
 router.get(
-  "/bookings/:bookingId",
-  auth(UserRole.ADMIN),
-  validateRequest(adminValidation.getBookingUserOverviewSchema),
-  adminController.getBookingUserOverview
-);
-
-router.get(
   "/account-suspension",
   auth(UserRole.ADMIN),
   adminController.getBookingDetailsForSuspension
 );
 
-router.get(
-  "/account-suspension/search/:searchTerm",
+router.post(
+  "/knowledge-hub",
   auth(UserRole.ADMIN),
-  validateRequest(adminValidation.searchBookingRequestsSchema),
-  adminController.searchBookingDetailsForSuspension
+  validateRequest(adminValidation.createKnowledgeHubArticleSchema),
+  adminController.createKnowledgeHubArticle
+);
+
+router.get(
+  "/knowledge-hub",
+  auth(UserRole.ADMIN),
+  adminController.getKnowledgeHubArticles
 );
 
 // Category management routes
@@ -139,6 +117,62 @@ router.patch(
   auth(UserRole.ADMIN),
   validateRequest(adminValidation.changeUserStatusSchema),
   adminController.changeUserStatus
+);
+
+router.get(
+  "/bookings/:bookingId",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.getBookingUserOverviewSchema),
+  adminController.getBookingUserOverview
+);
+
+router.get(
+  "/profile-status/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchUsersSchema),
+  adminController.searchForProfileStatus
+);
+
+router.get(
+  "/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchUsersSchema),
+  adminController.searchUsers
+);
+
+router.get(
+  "/bookings/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchBookingRequestsSchema),
+  adminController.searchBookingRequests
+);
+
+router.get(
+  "/account-suspension/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchBookingRequestsSchema),
+  adminController.searchBookingDetailsForSuspension
+);
+
+router.put(
+  "/knowledge-hub/:id",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.updateKnowledgeHubArticleSchema),
+  adminController.updateKnowledgeHubArticle
+);
+
+router.delete(
+  "/knowledge-hub/:id",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.deleteKnowledgeHubArticleSchema),
+  adminController.deleteKnowledgeHubArticle
+);
+
+router.get(
+  "/knowledge-hub/:id",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.getKnowledgeHubArticleSchema),
+  adminController.getKnowledgeHubArticleById
 );
 
 export const adminRoutes = router;

@@ -7,6 +7,7 @@ import { fileUploader } from "../../../helpers/fileUploader";
 import { User } from "../../models/User.model";
 import { Booking } from "../booking/booking.model";
 import { Service } from "../service/service.model";
+import { KnowledgeHub } from "./knowledgeHub.model";
 
 const createCategory = async (
   categoryData: Partial<ICategory>
@@ -1121,6 +1122,164 @@ const searchBookingDetailsForSuspension = async (searchTerm: string) => {
   return sortedBookings;
 };
 
+const createKnowledgeHubArticle = async (
+  title: string,
+  description: string
+) => {
+  const session = await mongoose.startSession();
+
+  try {
+    const result = await session.withTransaction(async () => {
+      const existingArticle = await KnowledgeHub.findOne({
+        title: { $regex: new RegExp(`^${title}$`, "i") },
+      }).session(session);
+
+      if (existingArticle) {
+        throw new ApiError(
+          httpStatus.CONFLICT,
+          `Knowledge Hub article with title '${title}' already exists`
+        );
+      }
+
+      const article = await KnowledgeHub.create(
+        [
+          {
+            title,
+            description,
+          },
+        ],
+        { session }
+      );
+
+      return article;
+    });
+
+    return result;
+  } finally {
+    await session.endSession();
+  }
+};
+
+const getKnowledgeHubArticles = async () => {
+  const articles = await KnowledgeHub.find().sort({ createdAt: -1 });
+  return articles;
+};
+
+const getKnowledgeHubArticleById = async (articleId: string) => {
+  if (!Types.ObjectId.isValid(articleId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid article ID");
+  }
+
+  const article = await KnowledgeHub.findById(articleId);
+
+  if (!article) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Knowledge Hub article not found");
+  }
+
+  return article;
+};
+
+const updateKnowledgeHubArticle = async (
+  articleId: string,
+  updateData: Partial<{
+    title: string;
+    description: string;
+  }>
+) => {
+  if (!Types.ObjectId.isValid(articleId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid article ID");
+  }
+
+  const session = await mongoose.startSession();
+
+  try {
+    const result = await session.withTransaction(async () => {
+      const existingArticle = await KnowledgeHub.findById(articleId).session(
+        session
+      );
+
+      if (!existingArticle) {
+        throw new ApiError(
+          httpStatus.NOT_FOUND,
+          "Knowledge Hub article not found"
+        );
+      }
+
+      if (updateData.title && updateData.title !== existingArticle.title) {
+        const duplicateArticle = await KnowledgeHub.findOne({
+          title: { $regex: new RegExp(`^${updateData.title}$`, "i") },
+        }).session(session);
+
+        if (duplicateArticle) {
+          throw new ApiError(
+            httpStatus.CONFLICT,
+            `Knowledge Hub article with title '${updateData.title}' already exists`
+          );
+        }
+      }
+
+      const updatedArticle = await KnowledgeHub.findByIdAndUpdate(
+        articleId,
+        { ...updateData, updatedAt: new Date() },
+        { new: true, session, runValidators: true }
+      );
+
+      if (!updatedArticle) {
+        throw new ApiError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Failed to update Knowledge Hub article"
+        );
+      }
+
+      return updatedArticle;
+    });
+
+    return result;
+  } finally {
+    await session.endSession();
+  }
+};
+
+const deleteKnowledgeHubArticle = async (articleId: string) => {
+  if (!Types.ObjectId.isValid(articleId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid article ID");
+  }
+
+  const session = await mongoose.startSession();
+
+  try {
+    const result = await session.withTransaction(async () => {
+      const articleToDelete = await KnowledgeHub.findById(articleId).session(
+        session
+      );
+
+      if (!articleToDelete) {
+        throw new ApiError(
+          httpStatus.NOT_FOUND,
+          "Knowledge Hub article not found"
+        );
+      }
+
+      const deletedArticle = await KnowledgeHub.findByIdAndDelete(
+        articleId
+      ).session(session);
+
+      if (!deletedArticle) {
+        throw new ApiError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Failed to delete Knowledge Hub article"
+        );
+      }
+
+      return { message: "Knowledge Hub article deleted successfully" };
+    });
+
+    return result;
+  } finally {
+    await session.endSession();
+  }
+};
+
 export const adminService = {
   createCategory,
   getCategories,
@@ -1142,4 +1301,9 @@ export const adminService = {
   searchBookingRequestOverview,
   searchBookingDetailsForSuspension,
   searchForProfileStatus,
+  createKnowledgeHubArticle,
+  updateKnowledgeHubArticle,
+  deleteKnowledgeHubArticle,
+  getKnowledgeHubArticles,
+  getKnowledgeHubArticleById,
 };

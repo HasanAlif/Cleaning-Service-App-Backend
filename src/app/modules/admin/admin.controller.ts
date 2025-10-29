@@ -295,6 +295,82 @@ const searchForProfileStatus = catchAsync(
   }
 );
 
+const createKnowledgeHubArticle = catchAsync(
+  async (req: Request, res: Response) => {
+    const { title, description } = req.body;
+    const result = await adminService.createKnowledgeHubArticle(
+      title,
+      description
+    );
+
+    sendResponse(res, {
+      statusCode: 201,
+      success: true,
+      message: "Knowledge Hub article created successfully",
+      data: result,
+    });
+  }
+);
+
+const getKnowledgeHubArticles = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await adminService.getKnowledgeHubArticles();
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Knowledge Hub articles retrieved successfully",
+      data: result,
+    });
+  }
+);
+
+const updateKnowledgeHubArticle = catchAsync(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { title, description } = req.body;
+    const result = await adminService.updateKnowledgeHubArticle(id, {
+      title,
+      description,
+    });
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Knowledge Hub article updated successfully",
+      data: result,
+    });
+  }
+);
+
+const deleteKnowledgeHubArticle = catchAsync(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    await adminService.deleteKnowledgeHubArticle(id);
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Knowledge Hub article deleted successfully",
+      data: null,
+    });
+  }
+);
+
+const getKnowledgeHubArticleById = catchAsync(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const result = await adminService.getKnowledgeHubArticleById(id);
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Knowledge Hub article retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 export const adminController = {
   createCategory,
   getCategories,
@@ -316,4 +392,9 @@ export const adminController = {
   searchBookingRequests,
   searchBookingDetailsForSuspension,
   searchForProfileStatus,
+  createKnowledgeHubArticle,
+  getKnowledgeHubArticles,
+  updateKnowledgeHubArticle,
+  deleteKnowledgeHubArticle,
+  getKnowledgeHubArticleById,
 };

@@ -108,10 +108,62 @@ const getBookingUserOverviewSchema = z.object({
   }),
 });
 
+const createKnowledgeHubArticleSchema = z.object({
+  body: z.object({
+    title: z
+      .string({ required_error: "Title is required" })
+      .min(3, "Title must be at least 3 characters long")
+      .max(200, "Title cannot exceed 200 characters")
+      .trim(),
+    description: z
+      .string({ required_error: "Description is required" })
+      .min(10, "Description must be at least 10 characters long")
+      .trim(),
+  }),
+});
+
+const updateKnowledgeHubArticleSchema = z.object({
+  params: z.object({
+    id: z
+      .string({ required_error: "Article ID is required" })
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid article ID format"),
+  }),
+  body: z.object({
+    title: z
+      .string({ required_error: "Title is required" })
+      .min(3, "Title must be at least 3 characters long")
+      .max(200, "Title cannot exceed 200 characters")
+      .trim()
+      .optional(),
+    description: z
+      .string({ required_error: "Description is required" })
+      .min(10, "Description must be at least 10 characters long")
+      .trim()
+      .optional(),
+  }),
+});
+
+const deleteKnowledgeHubArticleSchema = z.object({
+  params: z.object({
+    id: z
+      .string({ required_error: "Article ID is required" })
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid article ID format"),
+  }),
+});
+
+const getKnowledgeHubArticleSchema = z.object({
+  params: z.object({
+    id: z
+      .string({ required_error: "Article ID is required" })
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid article ID format"),
+  }),
+});
+
 export const adminValidation = {
   createCategorySchema,
   updateCategorySchema,
   getCategorySchema,
+  updateKnowledgeHubArticleSchema,
   deleteCategorySchema,
   getCategoriesQuerySchema,
   getUserSchema,
@@ -119,4 +171,7 @@ export const adminValidation = {
   changeUserStatusSchema,
   getBookingUserOverviewSchema,
   searchBookingRequestsSchema,
+  createKnowledgeHubArticleSchema,
+  deleteKnowledgeHubArticleSchema,
+  getKnowledgeHubArticleSchema,
 };
