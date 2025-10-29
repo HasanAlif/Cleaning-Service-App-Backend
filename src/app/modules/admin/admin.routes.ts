@@ -75,6 +75,13 @@ router.get(
   adminController.getBookingDetailsForSuspension
 );
 
+router.get(
+  "/account-suspension/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchBookingRequestsSchema),
+  adminController.searchBookingDetailsForSuspension
+);
+
 // Category management routes
 router.post(
   "/categories",

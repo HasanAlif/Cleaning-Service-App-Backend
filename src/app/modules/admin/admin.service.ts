@@ -873,6 +873,132 @@ const bookingDetailsForSuspension = async () => {
   return formattedBookings;
 };
 
+const searchBookingDetailsForSuspension = async (searchTerm: string) => {
+  if (!searchTerm || searchTerm.trim() === "") {
+    return [];
+  }
+
+  const trimmedSearch = searchTerm.trim();
+  const regex = new RegExp(trimmedSearch, "i");
+
+  const matchingUsers = await User.find({
+    isDeleted: { $ne: true },
+    $or: [{ userName: regex }, { email: regex }, { phoneNumber: regex }],
+  }).select("_id");
+
+  const userIds = matchingUsers.map((user) => user._id);
+
+  const matchingCategories = await Category.find({
+    name: regex,
+  }).select("_id");
+
+  const categoryIds = matchingCategories.map((cat) => cat._id);
+
+  const searchQuery: any = {
+    status: "COMPLETED",
+    $or: [],
+  };
+
+  if (userIds.length > 0) {
+    searchQuery.$or.push(
+      { customerId: { $in: userIds } },
+      { providerId: { $in: userIds } }
+    );
+  }
+
+  if (categoryIds.length > 0) {
+    const matchingServices = await Service.find({
+      categoryId: { $in: categoryIds },
+    }).select("_id");
+
+    const serviceIds = matchingServices.map((service: any) => service._id);
+
+    if (serviceIds.length > 0) {
+      searchQuery.$or.push({ serviceId: { $in: serviceIds } });
+    }
+  }
+
+  if (searchQuery.$or.length === 0) {
+    return [];
+  }
+
+  const bookings = await Booking.find(searchQuery)
+    .populate({
+      path: "customerId",
+      select: "userName profilePicture email status",
+    })
+    .populate({
+      path: "providerId",
+      select: "userName profilePicture email status",
+    })
+    .populate({
+      path: "serviceId",
+      select: "categoryId",
+      populate: {
+        path: "categoryId",
+        select: "name",
+      },
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const formattedBookings = bookings.map((booking: any) => ({
+    ownerUserName: booking.customerId?.userName,
+    ownerProfilePicture: booking.customerId?.profilePicture,
+    providerUserName: booking.providerId?.userName,
+    providerProfilePicture: booking.providerId?.profilePicture,
+    bookingDate: booking.scheduledAt,
+    ownerEmail: booking.customerId?.email,
+    providerEmail: booking.providerId?.email,
+    bookingService: booking.serviceId?.categoryId?.name,
+    rating: booking.rating,
+    providerAccountStatus: booking.providerId?.status,
+  }));
+
+  const searchLower = trimmedSearch.toLowerCase();
+  const sortedBookings = formattedBookings.sort((a: any, b: any) => {
+    const aOwnerLower = (a.ownerUserName || "").toLowerCase();
+    const aProviderLower = (a.providerUserName || "").toLowerCase();
+    const aServiceLower = (a.bookingService || "").toLowerCase();
+
+    const bOwnerLower = (b.ownerUserName || "").toLowerCase();
+    const bProviderLower = (b.providerUserName || "").toLowerCase();
+    const bServiceLower = (b.bookingService || "").toLowerCase();
+
+    let scoreA = 0;
+    if (aOwnerLower === searchLower) scoreA = 1000;
+    else if (aProviderLower === searchLower) scoreA = 900;
+    else if (aServiceLower === searchLower) scoreA = 800;
+    else if (aOwnerLower.startsWith(searchLower)) scoreA = 700;
+    else if (aProviderLower.startsWith(searchLower)) scoreA = 600;
+    else if (aServiceLower.startsWith(searchLower)) scoreA = 500;
+    else if (aOwnerLower.includes(searchLower)) scoreA = 400;
+    else if (aProviderLower.includes(searchLower)) scoreA = 300;
+    else if (aServiceLower.includes(searchLower)) scoreA = 200;
+
+    let scoreB = 0;
+    if (bOwnerLower === searchLower) scoreB = 1000;
+    else if (bProviderLower === searchLower) scoreB = 900;
+    else if (bServiceLower === searchLower) scoreB = 800;
+    else if (bOwnerLower.startsWith(searchLower)) scoreB = 700;
+    else if (bProviderLower.startsWith(searchLower)) scoreB = 600;
+    else if (bServiceLower.startsWith(searchLower)) scoreB = 500;
+    else if (bOwnerLower.includes(searchLower)) scoreB = 400;
+    else if (bProviderLower.includes(searchLower)) scoreB = 300;
+    else if (bServiceLower.includes(searchLower)) scoreB = 200;
+
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA;
+    }
+
+    return (
+      new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime()
+    );
+  });
+
+  return sortedBookings;
+};
+
 export const adminService = {
   createCategory,
   getCategories,
@@ -892,4 +1018,5 @@ export const adminService = {
   providerProfileStatus,
   bookingDetailsForSuspension,
   searchBookingRequestOverview,
+  searchBookingDetailsForSuspension,
 };
