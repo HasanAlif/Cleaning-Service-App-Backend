@@ -281,6 +281,20 @@ const searchBookingDetailsForSuspension = catchAsync(
   }
 );
 
+const searchForProfileStatus = catchAsync(
+  async (req: Request, res: Response) => {
+    const { searchTerm } = req.params;
+    const result = await adminService.searchForProfileStatus(searchTerm);
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Search profile status retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 export const adminController = {
   createCategory,
   getCategories,
@@ -301,4 +315,5 @@ export const adminController = {
   getBookingDetailsForSuspension,
   searchBookingRequests,
   searchBookingDetailsForSuspension,
+  searchForProfileStatus,
 };

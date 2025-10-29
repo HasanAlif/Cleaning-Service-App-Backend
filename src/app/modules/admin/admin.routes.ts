@@ -40,6 +40,13 @@ router.get(
   adminController.getProviderProfileStatus
 );
 
+router.get(
+  "/profile-status/search/:searchTerm",
+  auth(UserRole.ADMIN),
+  validateRequest(adminValidation.searchUsersSchema),
+  adminController.searchForProfileStatus
+);
+
 router.get("/providers", auth(UserRole.ADMIN), adminController.getAllProviders);
 
 router.get(

@@ -836,6 +836,128 @@ const providerProfileStatus = async () => {
   return providersWithStats;
 };
 
+const searchForProfileStatus = async (searchTerm: string) => {
+  if (!searchTerm || searchTerm.trim() === "") {
+    return [];
+  }
+
+  const trimmedSearch = searchTerm.trim();
+  const regex = new RegExp(trimmedSearch, "i");
+
+  const users = await User.find({
+    isDeleted: { $ne: true },
+    $or: [{ userName: regex }, { email: regex }, { phoneNumber: regex }],
+  })
+    .select("_id profilePicture userName role email phoneNumber")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const usersWithStats = await Promise.all(
+    users.map(async (user: any) => {
+      let totalOrders, completedOrders, pendingOrders, cancelledOrders;
+
+      if (user.role === "OWNER") {
+        totalOrders = await Booking.countDocuments({
+          customerId: user._id,
+        });
+
+        completedOrders = await Booking.countDocuments({
+          customerId: user._id,
+          status: "COMPLETED",
+        });
+
+        pendingOrders = await Booking.countDocuments({
+          customerId: user._id,
+          status: { $in: ["PENDING", "ACCEPTED", "IN_PROGRESS"] },
+        });
+
+        cancelledOrders = await Booking.countDocuments({
+          customerId: user._id,
+          status: "CANCELLED",
+        });
+      } else if (user.role === "PROVIDER") {
+        totalOrders = await Booking.countDocuments({
+          providerId: user._id,
+        });
+
+        completedOrders = await Booking.countDocuments({
+          providerId: user._id,
+          status: "COMPLETED",
+        });
+
+        pendingOrders = await Booking.countDocuments({
+          providerId: user._id,
+          status: { $in: ["PENDING", "ACCEPTED", "IN_PROGRESS"] },
+        });
+
+        cancelledOrders = await Booking.countDocuments({
+          providerId: user._id,
+          status: "CANCELLED",
+        });
+      } else {
+        totalOrders = 0;
+        completedOrders = 0;
+        pendingOrders = 0;
+        cancelledOrders = 0;
+      }
+
+      return {
+        _id: user._id,
+        profilePicture: user.profilePicture,
+        userName: user.userName,
+        role: user.role,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        completed: completedOrders,
+        pending: pendingOrders,
+        cancelled: cancelledOrders,
+        total: totalOrders,
+      };
+    })
+  );
+
+  const searchLower = trimmedSearch.toLowerCase();
+  const sortedUsers = usersWithStats.sort((a: any, b: any) => {
+    const aUserNameLower = (a.userName || "").toLowerCase();
+    const aEmailLower = (a.email || "").toLowerCase();
+    const aPhoneLower = (a.phoneNumber || "").toLowerCase();
+
+    const bUserNameLower = (b.userName || "").toLowerCase();
+    const bEmailLower = (b.email || "").toLowerCase();
+    const bPhoneLower = (b.phoneNumber || "").toLowerCase();
+
+    let scoreA = 0;
+    if (aUserNameLower === searchLower) scoreA = 1000;
+    else if (aEmailLower === searchLower) scoreA = 900;
+    else if (aPhoneLower === searchLower) scoreA = 800;
+    else if (aUserNameLower.startsWith(searchLower)) scoreA = 700;
+    else if (aEmailLower.startsWith(searchLower)) scoreA = 600;
+    else if (aPhoneLower.startsWith(searchLower)) scoreA = 500;
+    else if (aUserNameLower.includes(searchLower)) scoreA = 400;
+    else if (aEmailLower.includes(searchLower)) scoreA = 300;
+    else if (aPhoneLower.includes(searchLower)) scoreA = 200;
+
+    let scoreB = 0;
+    if (bUserNameLower === searchLower) scoreB = 1000;
+    else if (bEmailLower === searchLower) scoreB = 900;
+    else if (bPhoneLower === searchLower) scoreB = 800;
+    else if (bUserNameLower.startsWith(searchLower)) scoreB = 700;
+    else if (bEmailLower.startsWith(searchLower)) scoreB = 600;
+    else if (bPhoneLower.startsWith(searchLower)) scoreB = 500;
+    else if (bUserNameLower.includes(searchLower)) scoreB = 400;
+    else if (bEmailLower.includes(searchLower)) scoreB = 300;
+    else if (bPhoneLower.includes(searchLower)) scoreB = 200;
+
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA;
+    }
+
+    return aUserNameLower.localeCompare(bUserNameLower);
+  });
+
+  return sortedUsers;
+};
+
 const bookingDetailsForSuspension = async () => {
   const bookings = await Booking.find({ status: "COMPLETED" })
     .populate({
@@ -1019,4 +1141,5 @@ export const adminService = {
   bookingDetailsForSuspension,
   searchBookingRequestOverview,
   searchBookingDetailsForSuspension,
+  searchForProfileStatus,
 };
