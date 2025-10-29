@@ -211,6 +211,19 @@ const getBookingUserOverview = catchAsync(
   }
 );
 
+const getOwnerProfileStatus = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await adminService.ownerProfileStatus();
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: "Owner profile status retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 export const adminController = {
   createCategory,
   getCategories,
@@ -226,4 +239,5 @@ export const adminController = {
   getBookingRequestOverview,
   changeUserStatus,
   getBookingUserOverview,
+  getOwnerProfileStatus,
 };

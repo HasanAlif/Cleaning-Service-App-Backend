@@ -28,6 +28,12 @@ router.get(
 
 router.get("/owners", auth(UserRole.ADMIN), adminController.getAllOwners);
 
+router.get(
+  "/owners/profile-status",
+  auth(UserRole.ADMIN),
+  adminController.getOwnerProfileStatus
+);
+
 router.get("/providers", auth(UserRole.ADMIN), adminController.getAllProviders);
 
 router.get(
