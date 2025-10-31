@@ -99,6 +99,20 @@ const resetPasswordValidationSchema = z.object({
     }),
 });
 
+const resendOtpSchema = z.object({
+  body: z.object({
+    email: z
+      .string({
+        required_error: "Email is required",
+      })
+      .email("Invalid email format"),
+    otpType: z
+      .enum(["RESET_PASSWORD", "VERIFY_EMAIL"])
+      .default("RESET_PASSWORD")
+      .optional(),
+  }),
+});
+
 export const authValidation = {
   registerSchema,
   completeRegistrationSchema,
@@ -106,4 +120,5 @@ export const authValidation = {
   loginValidationSchema,
   changePasswordValidationSchema,
   resetPasswordValidationSchema,
+  resendOtpSchema,
 };

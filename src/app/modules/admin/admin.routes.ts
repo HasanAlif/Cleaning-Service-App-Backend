@@ -15,6 +15,11 @@ const categoryFileUpload = categoryUpload.fields([
   { name: "image", maxCount: 1 }, // Optional image field
 ]);
 
+// Middleware for admin profile picture upload
+const adminProfileUpload = categoryUpload.fields([
+  { name: "profilePicture", maxCount: 1 }, // Optional profile picture field
+]);
+
 const router = express.Router();
 
 // Statistics route
@@ -70,6 +75,7 @@ router.get(
 router.put(
   "/edit-profile",
   auth(UserRole.ADMIN),
+  adminProfileUpload,
   validateRequest(adminValidation.adminEditProfileSchema),
   adminController.adminEditProfile
 );

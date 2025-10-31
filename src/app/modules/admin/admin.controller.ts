@@ -373,7 +373,26 @@ const getKnowledgeHubArticleById = catchAsync(
 
 const adminEditProfile = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.user;
-  const result = await adminService.adminEditProfile(id, req.body);
+  const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+  const profilePictureFile = files?.profilePicture?.[0];
+
+  const updateData: any = {};
+
+  // Get userName from form data body
+  if (req.body.userName) {
+    updateData.userName = req.body.userName;
+  }
+
+  // Upload new profile picture if provided
+  if (profilePictureFile) {
+    const uploadResult = await fileUploader.uploadToCloudinary(
+      profilePictureFile,
+      "admin-profiles"
+    );
+    updateData.profilePicture = uploadResult.Location;
+  }
+
+  const result = await adminService.adminEditProfile(id, updateData);
 
   sendResponse(res, {
     statusCode: 200,

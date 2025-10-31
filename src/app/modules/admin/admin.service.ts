@@ -1285,6 +1285,7 @@ const adminEditProfile = async (
   adminId: string,
   updateData: Partial<{
     userName: string;
+    profilePicture: string;
   }>
 ) => {
   if (!Types.ObjectId.isValid(adminId)) {
@@ -1295,9 +1296,27 @@ const adminEditProfile = async (
 
   try {
     const result = await session.withTransaction(async () => {
+      const existingAdmin = await User.findById(adminId).session(session);
+
+      if (!existingAdmin) {
+        throw new ApiError(httpStatus.NOT_FOUND, "Admin not found");
+      }
+
+      const oldProfilePicture = updateData.profilePicture
+        ? existingAdmin.profilePicture
+        : null;
+
+      const fieldsToUpdate: any = {};
+      if (updateData.userName) {
+        fieldsToUpdate.userName = updateData.userName;
+      }
+      if (updateData.profilePicture) {
+        fieldsToUpdate.profilePicture = updateData.profilePicture;
+      }
+
       const updateAdmin = await User.findByIdAndUpdate(
         adminId,
-        { userName: updateData.userName },
+        fieldsToUpdate,
         { new: true, session, runValidators: true }
       ).select("_id userName email role profilePicture");
 
@@ -1306,6 +1325,22 @@ const adminEditProfile = async (
           httpStatus.INTERNAL_SERVER_ERROR,
           "Failed to update admin profile"
         );
+      }
+
+      // Delete old profile picture from Cloudinary if a new one was uploaded
+      if (
+        oldProfilePicture &&
+        updateData.profilePicture &&
+        oldProfilePicture !== updateData.profilePicture
+      ) {
+        try {
+          await fileUploader.deleteFromCloudinary(oldProfilePicture);
+        } catch (error) {
+          console.error(
+            "Error deleting old profile picture from Cloudinary:",
+            error
+          );
+        }
       }
 
       return updateAdmin;

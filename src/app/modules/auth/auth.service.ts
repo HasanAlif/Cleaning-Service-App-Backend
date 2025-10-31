@@ -108,11 +108,27 @@ const verifyOtp = async (payload: {
 
   switch (payload.otpType) {
     case "VERIFY_EMAIL":
-      isValidOtp = user.emailVerificationOtp === payload.otp;
+      // Check if user has already completed registration
+      if (user.registrationStatus === RegistrationStatus.COMPLETED) {
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          "Your email is already verified and registration is complete. Please login instead."
+        );
+      }
+
+      // Check if user's registration status is PARTIAL (needs email verification)
+      if (user.registrationStatus !== RegistrationStatus.PARTIAL) {
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          "Invalid registration flow. Please contact support."
+        );
+      }
+
+      isValidOtp = user.emailVerificationOtp?.trim() === payload.otp?.trim();
       otpExpiry = user.emailVerificationOtpExpiry;
       break;
     case "RESET_PASSWORD":
-      isValidOtp = user.resetPasswordOtp === payload.otp;
+      isValidOtp = user.resetPasswordOtp?.trim() === payload.otp?.trim();
       otpExpiry = user.resetPasswordOtpExpiry;
       break;
     default:
@@ -418,34 +434,67 @@ const forgotPassword = async (payload: { email: string }) => {
   return { message: "OTP sent to your email", otp };
 };
 
-const resendOtp = async (email: string) => {
+const resendOtp = async (email: string, otpType: string = "RESET_PASSWORD") => {
   const userData = await User.findOne({ email });
 
   if (!userData) {
     throw new ApiError(httpStatus.BAD_REQUEST, "User does not exist!");
   }
 
+  // Check if user is trying to resend email verification OTP but already completed registration
+  if (
+    otpType === "VERIFY_EMAIL" &&
+    userData.registrationStatus === RegistrationStatus.COMPLETED
+  ) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Your email is already verified and registration is complete. No need to verify again."
+    );
+  }
+
   const otp = crypto.randomInt(100000, 999999).toString();
-  const otpExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes for email verification, 15 for password reset
 
-  await User.findByIdAndUpdate(userData._id, {
-    resetPasswordOtp: otp,
-    resetPasswordOtpExpiry: otpExpiry,
-  });
+  // Update appropriate OTP fields based on type
+  if (otpType === "VERIFY_EMAIL") {
+    // For email verification during registration
+    userData.emailVerificationOtp = otp;
+    userData.emailVerificationOtpExpiry = otpExpiry;
+    await userData.save();
 
-  // Send OTP via email with beautiful template
-  try {
-    const resetTemplate = PASSWORD_RESET_TEMPLATE(
-      otp,
-      userData.userName || "User"
-    );
-    await emailSender(
-      email,
-      resetTemplate,
-      "🔐 Password Reset OTP (Resent) - Cleaning Service"
-    );
-  } catch (emailError) {
-    console.error("Resend OTP email error:", emailError);
+    try {
+      const emailTemplate = EMAIL_VERIFICATION_TEMPLATE(
+        otp,
+        userData.userName || "User"
+      );
+      await emailSender(
+        email,
+        emailTemplate,
+        "Verify Your Email - Cleaning Service 🧹"
+      );
+    } catch (emailError) {
+      console.error("Resend email verification OTP error:", emailError);
+    }
+  } else {
+    // For password reset
+    await User.findByIdAndUpdate(userData._id, {
+      resetPasswordOtp: otp,
+      resetPasswordOtpExpiry: otpExpiry,
+    });
+
+    try {
+      const resetTemplate = PASSWORD_RESET_TEMPLATE(
+        otp,
+        userData.userName || "User"
+      );
+      await emailSender(
+        email,
+        resetTemplate,
+        "🔐 Password Reset OTP - Cleaning Service"
+      );
+    } catch (emailError) {
+      console.error("Resend password reset OTP error:", emailError);
+    }
   }
 
   return { message: "OTP resent to your email", otp };

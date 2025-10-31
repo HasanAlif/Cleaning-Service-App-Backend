@@ -114,7 +114,8 @@ const forgotPassword = catchAsync(async (req: Request, res: Response) => {
 });
 
 const resendOtp = catchAsync(async (req: Request, res: Response) => {
-  const result = await authService.resendOtp(req.body.email);
+  const { email, otpType } = req.body;
+  const result = await authService.resendOtp(email, otpType);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

@@ -162,10 +162,11 @@ const getKnowledgeHubArticleSchema = z.object({
 const adminEditProfileSchema = z.object({
   body: z.object({
     userName: z
-      .string({ required_error: "Username is required" })
+      .string()
       .min(2, "Username must be at least 2 characters long")
       .max(100, "Username cannot exceed 100 characters")
-      .trim(),
+      .trim()
+      .optional(),
   }),
 });
 
