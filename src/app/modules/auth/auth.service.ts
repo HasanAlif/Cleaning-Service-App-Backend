@@ -1,13 +1,12 @@
 import * as bcrypt from "bcrypt";
 import crypto from "crypto";
 import httpStatus from "http-status";
-import { Secret } from "jsonwebtoken";
 import mongoose from "mongoose";
 import config from "../../../config";
 import ApiError from "../../../errors/ApiErrors";
 import { jwtHelpers } from "../../../helpers/jwtHelpers";
 import emailSender from "../../../shared/emailSender";
-import { User, UserRole, UserStatus, RegistrationStatus } from "../../models";
+import { User, UserStatus, RegistrationStatus, TempUser } from "../../models";
 import { fileUploader } from "../../../helpers/fileUploader";
 import { generateOTPString } from "../../../utils/GenerateOTP";
 import {
@@ -17,11 +16,8 @@ import {
 } from "../../../utils/Template";
 
 const registerUser = async (userData: any) => {
-  const session = await mongoose.startSession();
-
   try {
-    session.startTransaction();
-
+    // Check if user already exists in main User collection
     const existingUser = await User.findOne({
       $or: [{ email: userData.email }, { phoneNumber: userData.phoneNumber }],
     });
@@ -33,6 +29,18 @@ const registerUser = async (userData: any) => {
       );
     }
 
+    // Check if there's already a pending registration (temp user) with same email or phone
+    const existingTempUser = await TempUser.findOne({
+      $or: [{ email: userData.email }, { phoneNumber: userData.phoneNumber }],
+    });
+
+    if (existingTempUser) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "A registration is already in progress with this email or phone number. Please wait 15 minutes or verify your OTP."
+      );
+    }
+
     const emailOtp = generateOTPString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -41,22 +49,20 @@ const registerUser = async (userData: any) => {
       Number(config.bcrypt_salt_rounds)
     );
 
-    const userPayload = {
+    // Create temporary user
+    const tempUserPayload = {
       userName: userData.userName,
       email: userData.email,
       phoneNumber: userData.phoneNumber,
       password: hashedPassword,
       referralCode: userData.referralCode,
-      status: UserStatus.INACTIVE, // Default to inactive until verified
-      registrationStatus: RegistrationStatus.PARTIAL, // Initial registration step
       emailVerificationOtp: emailOtp,
       emailVerificationOtpExpiry: otpExpiry,
     };
 
-    const [newUser] = await User.create([userPayload], { session });
+    const newTempUser = await TempUser.create(tempUserPayload);
 
-    await session.commitTransaction();
-
+    // Send verification email
     try {
       const emailTemplate = EMAIL_VERIFICATION_TEMPLATE(
         emailOtp,
@@ -71,21 +77,15 @@ const registerUser = async (userData: any) => {
       console.error("Email sending error:", emailError);
     }
 
-    // Remove sensitive fields from response
-    const { password, emailVerificationOtp, ...userWithoutSensitiveData } =
-      newUser.toObject();
-
     return {
-      user: userWithoutSensitiveData,
+      email: newTempUser.email,
+      userName: newTempUser.userName,
       otp: process.env.NODE_ENV === "development" ? emailOtp : undefined, // Only return OTP in development
       message:
-        "Registration Initially successful. Please verify your email with the OTP sent to your email address.",
+        "Registration initiated successfully. Please verify your email with the OTP sent to your email address.",
     };
   } catch (error) {
-    await session.abortTransaction();
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 
@@ -94,70 +94,60 @@ const verifyOtp = async (payload: {
   otp: string;
   otpType: string;
 }) => {
-  const user = await User.findOne({
-    email: payload.email,
-    isDeleted: { $ne: true },
-  });
-
-  if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-  }
-
-  let isValidOtp = false;
-  let otpExpiry: Date | undefined;
-
-  switch (payload.otpType) {
-    case "VERIFY_EMAIL":
-      // Check if user has already completed registration
-      if (user.registrationStatus === RegistrationStatus.COMPLETED) {
-        throw new ApiError(
-          httpStatus.BAD_REQUEST,
-          "Your email is already verified and registration is complete. Please login instead."
-        );
-      }
-
-      // Check if user's registration status is PARTIAL (needs email verification)
-      if (user.registrationStatus !== RegistrationStatus.PARTIAL) {
-        throw new ApiError(
-          httpStatus.BAD_REQUEST,
-          "Invalid registration flow. Please contact support."
-        );
-      }
-
-      isValidOtp = user.emailVerificationOtp?.trim() === payload.otp?.trim();
-      otpExpiry = user.emailVerificationOtpExpiry;
-      break;
-    case "RESET_PASSWORD":
-      isValidOtp = user.resetPasswordOtp?.trim() === payload.otp?.trim();
-      otpExpiry = user.resetPasswordOtpExpiry;
-      break;
-    default:
-      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid OTP type");
-  }
-
-  if (!isValidOtp || !otpExpiry || otpExpiry < new Date()) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid or expired OTP");
-  }
-
+  // Handle email verification for registration (from TempUser)
   if (payload.otpType === "VERIFY_EMAIL") {
-    user.isEmailVerified = true;
-    user.registrationStatus = RegistrationStatus.EMAIL_VERIFIED;
-    user.emailVerificationOtp = undefined;
-    user.emailVerificationOtpExpiry = undefined;
-    await user.save();
+    const tempUser = await TempUser.findOne({
+      email: payload.email,
+    });
+
+    if (!tempUser) {
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        "No pending registration found for this email. Please register first."
+      );
+    }
+
+    // Verify OTP
+    const isValidOtp =
+      tempUser.emailVerificationOtp?.trim() === payload.otp?.trim();
+    const otpExpiry = tempUser.emailVerificationOtpExpiry;
+
+    if (!isValidOtp || !otpExpiry || otpExpiry < new Date()) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid or expired OTP");
+    }
+
+    return {
+      email: tempUser.email,
+      userName: tempUser.userName,
+      message: "OTP verified successfully. Please complete your registration.",
+    };
   }
 
-  const {
-    password,
-    emailVerificationOtp,
-    resetPasswordOtp,
-    ...userWithoutSensitiveData
-  } = user.toObject();
+  // Handle password reset OTP verification (from User)
+  if (payload.otpType === "RESET_PASSWORD") {
+    const user = await User.findOne({
+      email: payload.email,
+      isDeleted: { $ne: true },
+    });
 
-  return {
-    user: userWithoutSensitiveData,
-    message: "OTP verified successfully",
-  };
+    if (!user) {
+      throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+    }
+
+    const isValidOtp = user.resetPasswordOtp?.trim() === payload.otp?.trim();
+    const otpExpiry = user.resetPasswordOtpExpiry;
+
+    if (!isValidOtp || !otpExpiry || otpExpiry < new Date()) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid or expired OTP");
+    }
+
+    return {
+      email: user.email,
+      message: "OTP verified successfully",
+    };
+  }
+
+  throw new ApiError(httpStatus.BAD_REQUEST, "Invalid OTP type");
 };
 
 const completeRegistration = async (registrationData: any, files: any) => {
@@ -166,24 +156,45 @@ const completeRegistration = async (registrationData: any, files: any) => {
   try {
     session.startTransaction();
 
-    const user = await User.findOne({
+    // Find temp user
+    const tempUser = await TempUser.findOne({
       email: registrationData.email,
-      registrationStatus: RegistrationStatus.EMAIL_VERIFIED,
-      isDeleted: { $ne: true },
     }).session(session);
 
-    if (!user) {
+    if (!tempUser) {
       throw new ApiError(
         httpStatus.NOT_FOUND,
-        "User not found or email not verified. Please verify your email first."
+        "No pending registration found. Please register and verify your email first."
       );
     }
 
-    // Check OTP again for security
-    if (user.emailVerificationOtp !== registrationData.otp) {
+    // If OTP is provided, verify it for extra security
+    // If not provided, we trust that the user already verified via /verify-otp
+    if (registrationData.otp) {
+      const isValidOtp =
+        tempUser.emailVerificationOtp?.trim() === registrationData.otp?.trim();
+      const otpExpiry = tempUser.emailVerificationOtpExpiry;
+
+      if (!isValidOtp || !otpExpiry || otpExpiry < new Date()) {
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          "Invalid or expired OTP. Please request a new OTP."
+        );
+      }
+    }
+
+    // Check if user already exists (double-check before final registration)
+    const existingUser = await User.findOne({
+      $or: [{ email: tempUser.email }, { phoneNumber: tempUser.phoneNumber }],
+    }).session(session);
+
+    if (existingUser) {
+      // Delete temp user and inform user to login
+      await TempUser.findByIdAndDelete(tempUser._id).session(session);
+      await session.commitTransaction();
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Invalid OTP for registration completion"
+        "User already exists with this email or phone number. Please login instead."
       );
     }
 
@@ -223,8 +234,13 @@ const completeRegistration = async (registrationData: any, files: any) => {
       }
     }
 
-    // Update user with complete registration data
-    const updateData = {
+    // Create final user with all data
+    const userPayload = {
+      userName: tempUser.userName,
+      email: tempUser.email,
+      phoneNumber: tempUser.phoneNumber,
+      password: tempUser.password,
+      referralCode: tempUser.referralCode,
       role: registrationData.role,
       lattitude: registrationData.lattitude,
       longitude: registrationData.longitude,
@@ -235,26 +251,29 @@ const completeRegistration = async (registrationData: any, files: any) => {
       NIDBack: nidBackUrl,
       selfieWithNID: selfieWithNIDUrl,
       experience: registrationData.experience,
+      affiliationCondition:
+        registrationData.affiliationCondition === "true" ||
+        registrationData.affiliationCondition === true,
       status: UserStatus.ACTIVE,
       registrationStatus: RegistrationStatus.COMPLETED,
-      emailVerificationOtp: undefined,
-      emailVerificationOtpExpiry: undefined,
+      isEmailVerified: true,
     };
 
-    const updatedUser = await User.findByIdAndUpdate(user._id, updateData, {
-      new: true,
-      session,
-    }).select("-password -emailVerificationOtp");
+    const [newUser] = await User.create([userPayload], { session });
+
+    // Delete temp user after successful registration
+    await TempUser.findByIdAndDelete(tempUser._id).session(session);
 
     await session.commitTransaction();
 
+    // Send welcome email
     try {
       const welcomeTemplate = WELCOME_COMPLETE_TEMPLATE(
-        user.userName,
+        newUser.userName,
         registrationData.role
       );
       await emailSender(
-        user.email,
+        newUser.email,
         welcomeTemplate,
         "Welcome to Cleaning Service! 🎉 Registration Complete"
       );
@@ -262,9 +281,12 @@ const completeRegistration = async (registrationData: any, files: any) => {
       console.error("Welcome email sending error:", emailError);
     }
 
+    // Remove sensitive fields from response
+    const { password, ...userWithoutPassword } = newUser.toObject();
+
     return {
-      user: updatedUser,
-      message: "Registration completed successfully",
+      user: userWithoutPassword,
+      message: "Registration completed successfully. You can now login.",
     };
   } catch (error) {
     await session.abortTransaction();
@@ -435,37 +457,29 @@ const forgotPassword = async (payload: { email: string }) => {
 };
 
 const resendOtp = async (email: string, otpType: string = "RESET_PASSWORD") => {
-  const userData = await User.findOne({ email });
-
-  if (!userData) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "User does not exist!");
-  }
-
-  // Check if user is trying to resend email verification OTP but already completed registration
-  if (
-    otpType === "VERIFY_EMAIL" &&
-    userData.registrationStatus === RegistrationStatus.COMPLETED
-  ) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Your email is already verified and registration is complete. No need to verify again."
-    );
-  }
-
-  const otp = crypto.randomInt(100000, 999999).toString();
-  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes for email verification, 15 for password reset
-
-  // Update appropriate OTP fields based on type
+  // Handle email verification OTP resend (for registration - TempUser)
   if (otpType === "VERIFY_EMAIL") {
-    // For email verification during registration
-    userData.emailVerificationOtp = otp;
-    userData.emailVerificationOtpExpiry = otpExpiry;
-    await userData.save();
+    const tempUser = await TempUser.findOne({ email });
+
+    if (!tempUser) {
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        "No pending registration found for this email. Please register first."
+      );
+    }
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Update OTP in temp user
+    tempUser.emailVerificationOtp = otp;
+    tempUser.emailVerificationOtpExpiry = otpExpiry;
+    await tempUser.save();
 
     try {
       const emailTemplate = EMAIL_VERIFICATION_TEMPLATE(
         otp,
-        userData.userName || "User"
+        tempUser.userName || "User"
       );
       await emailSender(
         email,
@@ -475,29 +489,47 @@ const resendOtp = async (email: string, otpType: string = "RESET_PASSWORD") => {
     } catch (emailError) {
       console.error("Resend email verification OTP error:", emailError);
     }
-  } else {
-    // For password reset
-    await User.findByIdAndUpdate(userData._id, {
-      resetPasswordOtp: otp,
-      resetPasswordOtpExpiry: otpExpiry,
-    });
 
-    try {
-      const resetTemplate = PASSWORD_RESET_TEMPLATE(
-        otp,
-        userData.userName || "User"
-      );
-      await emailSender(
-        email,
-        resetTemplate,
-        "🔐 Password Reset OTP - Cleaning Service"
-      );
-    } catch (emailError) {
-      console.error("Resend password reset OTP error:", emailError);
-    }
+    return {
+      message: "OTP resent to your email",
+      otp: process.env.NODE_ENV === "development" ? otp : undefined,
+    };
   }
 
-  return { message: "OTP resent to your email", otp };
+  // Handle password reset OTP resend (for existing users - User)
+  const userData = await User.findOne({ email });
+
+  if (!userData) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "User does not exist!");
+  }
+
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const otpExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+  // Update password reset OTP
+  await User.findByIdAndUpdate(userData._id, {
+    resetPasswordOtp: otp,
+    resetPasswordOtpExpiry: otpExpiry,
+  });
+
+  try {
+    const resetTemplate = PASSWORD_RESET_TEMPLATE(
+      otp,
+      userData.userName || "User"
+    );
+    await emailSender(
+      email,
+      resetTemplate,
+      "🔐 Password Reset OTP - Cleaning Service"
+    );
+  } catch (emailError) {
+    console.error("Resend password reset OTP error:", emailError);
+  }
+
+  return {
+    message: "OTP resent to your email",
+    otp: process.env.NODE_ENV === "development" ? otp : undefined,
+  };
 };
 
 const verifyForgotPasswordOtp = async (payload: {

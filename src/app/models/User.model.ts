@@ -34,6 +34,7 @@ export interface IUser extends Document {
   NIDFront?: string;
   NIDBack?: string;
   selfieWithNID?: string;
+  affiliationCondition: boolean;
   plan?: string;
   address?: string;
   aboutMe?: string;
@@ -120,6 +121,10 @@ const UserSchema = new Schema<IUser>(
     selfieWithNID: {
       type: String,
       trim: true,
+    },
+    affiliationCondition: {
+      type: Boolean,
+      required: true,
     },
     plan: {
       type: String,

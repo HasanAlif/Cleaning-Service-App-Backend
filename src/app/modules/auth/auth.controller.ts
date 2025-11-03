@@ -12,7 +12,8 @@ const register = catchAsync(async (req: Request, res: Response) => {
     success: true,
     message: result.message,
     data: {
-      user: result.user,
+      email: result.email,
+      userName: result.userName,
       otp: result.otp,
     },
   });
@@ -25,7 +26,10 @@ const verifyOtp = catchAsync(async (req: Request, res: Response) => {
     statusCode: httpStatus.OK,
     success: true,
     message: result.message,
-    data: result.user,
+    data: {
+      email: result.email,
+      userName: result.userName,
+    },
   });
 });
 
