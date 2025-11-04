@@ -235,7 +235,7 @@ const completeRegistration = async (registrationData: any, files: any) => {
     }
 
     // Create final user with all data
-    const userPayload = {
+    const userPayload: any = {
       userName: tempUser.userName,
       email: tempUser.email,
       phoneNumber: tempUser.phoneNumber,
@@ -245,19 +245,21 @@ const completeRegistration = async (registrationData: any, files: any) => {
       lattitude: registrationData.lattitude,
       longitude: registrationData.longitude,
       resultRange: registrationData.resultRange || 10,
-      plan: registrationData.plan || "BASIC",
       profilePicture: profilePictureUrl,
       NIDFront: nidFrontUrl,
       NIDBack: nidBackUrl,
       selfieWithNID: selfieWithNIDUrl,
-      experience: registrationData.experience,
-      affiliationCondition:
-        registrationData.affiliationCondition === "true" ||
-        registrationData.affiliationCondition === true,
+      affiliationCondition: registrationData.affiliationCondition === true,
       status: UserStatus.ACTIVE,
       registrationStatus: RegistrationStatus.COMPLETED,
       isEmailVerified: true,
     };
+
+    // Only add plan for PROVIDER role (OWNER gets service for free)
+    if (registrationData.role === "PROVIDER") {
+      userPayload.plan = registrationData.plan || "FREE";
+      userPayload.experience = registrationData.experience;
+    }
 
     const [newUser] = await User.create([userPayload], { session });
 
