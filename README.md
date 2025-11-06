@@ -47,9 +47,6 @@ npm install
 # Set up environment variables (see .env.example)
 cp .env.example .env
 
-# Run database seeder (optional)
-npm run seed
-
 # Start development server
 npm run dev
 ```
@@ -254,7 +251,6 @@ The server will start on `http://localhost:8000` (or your configured PORT)
 - `npm run dev` - Start development server
 - `npm run build` - Build TypeScript to JavaScript
 - `npm start` - Start production server
-- `npm run seed` - Seed database with test data
 - `npm run generate` - Generate new module structure
 
 ## 🤝 Contributing
