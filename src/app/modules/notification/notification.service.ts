@@ -2,21 +2,50 @@ import { Notification, NotificationType } from "../../models";
 import { getIO, getReceiverSocketId } from "../../../socket/socketHandler";
 
 interface CreateNotificationParams {
-  recipientId: string;
-  senderId?: string;
+  recipientId: any;
+  senderId?: any;
   type: NotificationType;
   title: string;
   message: string;
   data?: any;
 }
 
+// Normalize various ID shapes (string, ObjectId, populated doc) to string
+const normalizeId = (value: any): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    if (value === "[object Object]") return undefined;
+    return value;
+  }
+  if (typeof value === "object") {
+    if (value._id) return String(value._id);
+    if (typeof (value as any).toHexString === "function") {
+      return (value as any).toHexString();
+    }
+    const str = value.toString?.();
+    if (typeof str === "string" && /^[a-fA-F0-9]{24}$/.test(str)) return str;
+  }
+  return undefined;
+};
+
 export const createNotification = async (
   params: CreateNotificationParams
-): Promise<void> => {
+) => {
   try {
+    const recipientId = normalizeId(params.recipientId);
+    const senderId = normalizeId(params.senderId);
+
+    if (!recipientId) {
+      throw new Error(
+        `Invalid recipientId provided to createNotification: ${String(
+          params.recipientId
+        )}`
+      );
+    }
+
     const notification = await Notification.create({
-      recipientId: params.recipientId,
-      senderId: params.senderId,
+      recipientId,
+      senderId,
       type: params.type,
       title: params.title,
       message: params.message,
@@ -30,7 +59,7 @@ export const createNotification = async (
     // Send real-time notification via Socket.IO
     const io = getIO();
     if (io) {
-      const recipientSocketId = getReceiverSocketId(params.recipientId);
+      const recipientSocketId = getReceiverSocketId(recipientId);
       if (recipientSocketId) {
         io.to(recipientSocketId).emit("new_notification", {
           ...notification.toObject(),
@@ -46,7 +75,7 @@ export const createNotification = async (
 export const createBulkNotifications = async (
   recipientIds: string[],
   params: Omit<CreateNotificationParams, "recipientId">
-): Promise<void> => {
+) => {
   try {
     const notifications = recipientIds.map((recipientId) => ({
       recipientId,
@@ -106,7 +135,7 @@ export const getUserNotifications = async (
 export const markNotificationAsRead = async (
   notificationId: string,
   userId: string
-): Promise<boolean> => {
+) => {
   const result = await Notification.updateOne(
     { _id: notificationId, recipientId: userId },
     { isRead: true }
@@ -117,7 +146,7 @@ export const markNotificationAsRead = async (
 
 export const markAllNotificationsAsRead = async (
   userId: string
-): Promise<number> => {
+) => {
   const result = await Notification.updateMany(
     { recipientId: userId, isRead: false },
     { isRead: true }
@@ -129,7 +158,7 @@ export const markAllNotificationsAsRead = async (
 export const deleteNotification = async (
   notificationId: string,
   userId: string
-): Promise<boolean> => {
+) => {
   const result = await Notification.deleteOne({
     _id: notificationId,
     recipientId: userId,

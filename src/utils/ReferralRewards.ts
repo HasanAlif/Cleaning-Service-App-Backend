@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import { Referral, ReferralStatus } from "../app/models/Referral.model";
 import { User } from "../app/models/User.model";
 import { Booking } from "../app/modules/booking/booking.model";
+import { NotificationType } from "../app/models";
+import { notificationService } from "../app/modules/notification/notification.service";
 
 /**
  * Process referral rewards when a booking is completed
@@ -49,6 +51,20 @@ export const processReferralRewards = async (
       console.log(
         `Referral: Awarding 10 credits for first booking to referrer ${referralRecord.referrerId}`
       );
+
+      // Notify referrer about earning first booking reward
+      await notificationService.createNotification({
+        recipientId: referralRecord.referrerId,
+        type: NotificationType.REFERRAL_REWARD_EARNED,
+        title: "Referral Reward Earned!",
+        message: `You earned 10 credits! Your referral ${referralRecord.refereeName} completed their first booking.`,
+        data: {
+          creditsEarned: 10,
+          refereeId: customerId,
+          refereeName: referralRecord.refereeName,
+          rewardType: "first_booking",
+        },
+      });
     }
 
     // Third booking bonus: Additional 5 credits
@@ -64,6 +80,20 @@ export const processReferralRewards = async (
       console.log(
         `Referral: Awarding 5 bonus credits for 3rd booking to referrer ${referralRecord.referrerId}`
       );
+
+      // Notify referrer about earning bonus tier reward
+      await notificationService.createNotification({
+        recipientId: referralRecord.referrerId,
+        type: NotificationType.REFERRAL_REWARD_EARNED,
+        title: "Bonus Referral Reward!",
+        message: `You earned an additional 5 credits! Your referral ${referralRecord.refereeName} completed their 3rd booking.`,
+        data: {
+          creditsEarned: 5,
+          refereeId: customerId,
+          refereeName: referralRecord.refereeName,
+          rewardType: "bonus_tier",
+        },
+      });
     }
 
     // If both rewards are awarded, mark referral as COMPLETED

@@ -8,6 +8,9 @@ export enum NotificationType {
   BOOKING_CANCELLED = "BOOKING_CANCELLED",
   BOOKING_RATED = "BOOKING_RATED",
 
+  // Referral related
+  REFERRAL_REWARD_EARNED = "REFERRAL_REWARD_EARNED",
+
   // Website content related
   WEBSITE_CONTENT_UPDATED = "WEBSITE_CONTENT_UPDATED",
 

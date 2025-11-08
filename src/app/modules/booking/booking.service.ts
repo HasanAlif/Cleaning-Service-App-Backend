@@ -618,8 +618,13 @@ const completeBookingByOwner = async (
   // Send notifications
   // Notify provider that booking was completed
   if (updatedBooking!.providerId) {
+    const providerIdStr =
+      typeof updatedBooking!.providerId === "object"
+        ? (updatedBooking!.providerId as any)._id?.toString()
+        : (updatedBooking!.providerId as any)?.toString();
+
     await notificationService.createNotification({
-      recipientId: updatedBooking!.providerId.toString(),
+      recipientId: providerIdStr,
       senderId: ownerId,
       type: NotificationType.BOOKING_COMPLETED,
       title: "Booking Completed",

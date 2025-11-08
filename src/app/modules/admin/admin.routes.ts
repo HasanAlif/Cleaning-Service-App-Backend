@@ -68,7 +68,6 @@ router.post(
 
 router.get(
   "/knowledge-hub",
-  auth(UserRole.ADMIN),
   adminController.getKnowledgeHubArticles
 );
 
@@ -226,7 +225,6 @@ router.delete(
 
 router.get(
   "/knowledge-hub/:id",
-  auth(UserRole.ADMIN),
   validateRequest(adminValidation.getKnowledgeHubArticleSchema),
   adminController.getKnowledgeHubArticleById
 );
