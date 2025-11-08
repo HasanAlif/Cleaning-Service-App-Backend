@@ -59,6 +59,18 @@ router.get(
 );
 
 router.get(
+  "/provider/completed-bookings",
+  auth(UserRole.PROVIDER),
+  bookingController.getProviderAllCompletedBookings
+);
+
+router.get(
+  "/owner/completed-bookings",
+  auth(UserRole.OWNER),
+  bookingController.getOwnerAllCompletedBookings
+);
+
+router.get(
   "/owner/cancelled-bookings",
   auth(UserRole.OWNER),
   bookingController.getOwnerAllCancelledBookings

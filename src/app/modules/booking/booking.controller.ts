@@ -233,6 +233,36 @@ const getOwnerAllOngoingBookings = catchAsync(
   }
 );
 
+const getProviderAllCompletedBookings = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await bookingService.getProviderAllCompletedBookings(
+      req.user.id
+    );
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Completed bookings retrieved successfully",
+      data: result,
+    });
+  }
+);
+
+const getOwnerAllCompletedBookings = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await bookingService.getOwnerAllCompletedBookings(
+      req.user.id
+    );
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Completed bookings retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 const getOwnerAllCancelledBookings = catchAsync(
   async (req: Request, res: Response) => {
     const result = await bookingService.getOwnerAllCancelledBookings(
@@ -313,6 +343,8 @@ export const bookingController = {
   getProviderPendingBookingsForHomepage,
   getProviderAllOngoingBookings,
   getOwnerAllOngoingBookings,
+  getProviderAllCompletedBookings,
+  getOwnerAllCompletedBookings,
   getOwnerAllCancelledBookings,
   getProviderAllCancelledBookings,
   getRatingAndReviewPage,

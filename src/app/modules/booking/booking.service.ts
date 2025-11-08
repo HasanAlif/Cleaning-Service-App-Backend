@@ -841,6 +841,52 @@ const getProviderAllCancelledBookings = async (providerId: string) => {
   return transformedBookings;
 };
 
+const getProviderAllCompletedBookings = async (providerId: string) => {
+  const bookings = await Booking.find({
+    providerId: providerId,
+    status: "COMPLETED",
+  })
+    .populate("serviceId", "name rateByHour")
+    .sort({ scheduledAt: 1 });
+
+  const transformedBookings = bookings.map((booking) => ({
+    id: booking.id,
+    serviceName: (booking.serviceId as any).name,
+    ownerAddress: booking.address,
+    ownerPhoneNumber: booking.phoneNumber,
+    description: booking.description,
+    priceByHour: (booking.serviceId as any).rateByHour,
+    serviceDuration: booking.serviceDuration,
+    totalAmount: booking.totalAmount,
+    status: booking.status,
+  }));
+
+  return transformedBookings;
+};
+
+const getOwnerAllCompletedBookings = async (ownerId: string) => {
+  const bookings = await Booking.find({
+    customerId: ownerId,
+    status: "COMPLETED",
+  })
+    .populate("serviceId", "name rateByHour")
+    .sort({ scheduledAt: 1 });
+
+  const transformedBookings = bookings.map((booking) => ({
+    id: booking.id,
+    serviceName: (booking.serviceId as any).name,
+    ownerAddress: booking.address,
+    ownerPhoneNumber: booking.phoneNumber,
+    description: booking.description,
+    priceByHour: (booking.serviceId as any).rateByHour,
+    serviceDuration: booking.serviceDuration,
+    totalAmount: booking.totalAmount,
+    status: booking.status,
+  }));
+
+  return transformedBookings;
+};
+
 const getRatingAndReviewPage = async (bookingId: string) => {
   if (!mongoose.Types.ObjectId.isValid(bookingId)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid booking ID");
@@ -988,6 +1034,8 @@ export const bookingService = {
   getProviderAllPendingBookings,
   getProviderPendingBookingsForHomepage,
   getProviderAllOngoingBookings,
+  getProviderAllCompletedBookings,
+  getOwnerAllCompletedBookings,
   getOwnerAllCancelledBookings,
   getProviderAllCancelledBookings,
   getRatingAndReviewPage,
