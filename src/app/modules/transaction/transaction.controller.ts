@@ -156,3 +156,21 @@ export const getRevenueStats = catchAsync(
     });
   }
 );
+
+export const getBookingPaymentHistory = catchAsync(
+  async (req: Request, res: Response) => {
+    const { page = 1, limit = 20 } = req.query;
+
+    const result = await transactionService.getBookingPaymentHistory({
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Booking payment transactions retrieved successfully",
+      data: result,
+    });
+  }
+);

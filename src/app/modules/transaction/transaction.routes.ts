@@ -15,13 +15,6 @@ router.get(
   transactionController.getMyTransactions
 );
 
-// Get specific transaction by ID
-router.get(
-  "/:id",
-  auth("OWNER", "PROVIDER", "ADMIN", "SUPER_ADMIN"),
-  transactionController.getTransactionById
-);
-
 /**
  * Admin routes - accessible only to admins
  */
@@ -43,8 +36,15 @@ router.get(
 // Get revenue statistics
 router.get(
   "/admin/revenue",
-  auth("ADMIN", "SUPER_ADMIN"),
+  auth("ADMIN"),
   transactionController.getRevenueStats
+);
+
+// Get booking payment transaction history (ALL booking payment transactions)
+router.get(
+  "/booking-payments",
+  auth("ADMIN"),
+  transactionController.getBookingPaymentHistory
 );
 
 export const transactionRoutes = router;

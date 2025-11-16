@@ -561,6 +561,63 @@ const getRevenueStats = async (
   );
 };
 
+// Get booking payment transaction history with owner and provider details
+const getBookingPaymentHistory = async (
+  options: {
+    page?: number;
+    limit?: number;
+  } = {}
+) => {
+  const page = options.page || 1;
+  const limit = options.limit || 20;
+  const skip = (page - 1) * limit;
+
+  const query: any = {
+    $or: [
+      { transactionType: TransactionType.BOOKING_PAYMENT },
+      { transactionType: TransactionType.BOOKING_REFUND },
+    ],
+    $and: [
+      { payerId: { $exists: true, $ne: null } },
+      { receiverId: { $exists: true, $ne: null } },
+    ],
+  };
+
+  const [transactions, total] = await Promise.all([
+    Transaction.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("payerId", "userName email")
+      .populate("receiverId", "userName email")
+      .populate("bookingId", "bookingId serviceType")
+      .lean(),
+    Transaction.countDocuments(query),
+  ]);
+
+  const formattedTransactions = transactions.map((transaction: any) => ({
+    ownerName: transaction.payerId?.userName || transaction.payerName,
+    providerName: transaction.receiverId?.userName || transaction.receiverName,
+    createdAt: transaction.createdAt,
+    ownerEmail: transaction.payerId?.email,
+    providerEmail: transaction.receiverId?.email,
+    transactionId: transaction.transactionId,
+    amount: transaction.amount,
+    transactionType: transaction.transactionType,
+    status: transaction.status,
+  }));
+
+  return {
+    transactions: formattedTransactions,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+};
+
 export const transactionService = {
   recordSubscriptionPurchase,
   recordBookingPayment,
@@ -572,4 +629,5 @@ export const transactionService = {
   getAllTransactions,
   getTransactionStats,
   getRevenueStats,
+  getBookingPaymentHistory,
 };
