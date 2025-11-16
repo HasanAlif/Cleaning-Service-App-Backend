@@ -88,10 +88,9 @@ const activateFromCheckout = catchAsync(async (req: Request, res: Response) => {
 
   if (!session_id || typeof session_id !== "string") {
     // Redirect to frontend with error
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    return res.redirect(
-      `${frontendUrl}/subscription/error?message=Missing session ID`
-    );
+    const frontendUrl =
+      process.env.FRONTEND_URL || "http://103.159.73.129:3000";
+    return res.redirect(`${frontendUrl}/payment-cancel`);
   }
 
   try {
@@ -100,23 +99,20 @@ const activateFromCheckout = catchAsync(async (req: Request, res: Response) => {
     );
 
     // Redirect to frontend success page with subscription details
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    res.redirect(
-      `${frontendUrl}/subscription/success?` +
-        `subscription_id=${result._id}&` +
-        `plan=${result.plan}&` +
-        `status=${result.status}&` +
-        `activated=true`
-    );
+    const frontendUrl =
+      process.env.FRONTEND_URL || "http://103.159.73.129:3000";
+    res.redirect(`${frontendUrl}/payment-success`);
   } catch (error) {
     console.error(`❌ Subscription activation failed:`, error);
 
     // Redirect to frontend with error
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl =
+      process.env.FRONTEND_URL || "http://103.159.73.129:3000";
     const errorMessage = (error as Error).message || "Activation failed";
     res.redirect(
-      `${frontendUrl}/subscription/error?` +
-        `message=${encodeURIComponent(errorMessage)}&` +
+      `${frontendUrl}/payment-cancel?` +
+        `type=subscription&` +
+        `error=${encodeURIComponent(errorMessage)}&` +
         `session_id=${session_id}`
     );
   }

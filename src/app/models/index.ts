@@ -9,6 +9,8 @@ export {
 
 export { TempUser, ITempUser } from "./TempUser.model";
 
+export { TempBooking, ITempBooking } from "./TempBooking.model";
+
 export {
   Notification,
   INotification,

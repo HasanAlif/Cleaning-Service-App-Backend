@@ -480,7 +480,9 @@ const createSubscriptionCheckout = async (
     // CRITICAL: Redirect to BACKEND first to activate subscription, then redirect to frontend
     // This ensures subscription activates even if frontend is not connected
     success_url: `${backendUrl}/api/subscription/activate-from-checkout?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.FRONTEND_URL}/subscription/plans`,
+    cancel_url: `${
+      process.env.FRONTEND_URL || "http://103.159.73.129:3000"
+    }/payment-cancel`,
     metadata: {
       type: "subscription_payment", // CRITICAL: Identifies this as subscription payment for webhook routing
       userId: userId,
@@ -907,6 +909,13 @@ const handleStripeWebhook = async (
     );
   }
 
+  const { handleSubscriptionEvent } = await import("../../../helpers/handleStripeEvents");
+  
+  if (!handleSubscriptionEvent(event.type)) {
+    return { received: true, eventType: event.type };
+  }
+
+  // Handle action-required events
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -956,6 +965,12 @@ const handleStripeWebhook = async (
       }
       break;
     }
+
+    case "customer.subscription.created":
+      break;
+
+    default:
+      break;
   }
 
   return { received: true, eventType: event.type };

@@ -142,12 +142,9 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
   const providerStripeAccountId = providerUser.stripeAccountId;
 
   // Get redirect URLs from config
-  const successUrl =
-    config.payment_success_url ||
-    `${config.frontend_url}/bookings/${bookingId}/success`;
-  const cancelUrl =
-    config.payment_cancel_url ||
-    `${config.frontend_url}/bookings/${bookingId}/payment`;
+  // Use configured URLs with booking ID as query parameter for tracking
+  const successUrl = `${config.payment_success_url}`;
+  const cancelUrl = `${config.payment_cancel_url}`;
 
   // Create Checkout Session with direct charge to connected account
   // No platform fee - admin earns through subscription plans only
@@ -540,6 +537,16 @@ const handleBookingPaymentWebhook = async (
     );
   }
 
+  // Validate event using centralized handler
+  const { handleBookingPaymentEvent } = await import(
+    "../../../helpers/handleStripeEvents"
+  );
+
+  if (!handleBookingPaymentEvent(event.type)) {
+    return { received: true, eventType: event.type };
+  }
+
+  // Process action-required events
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -547,10 +554,44 @@ const handleBookingPaymentWebhook = async (
       // Verify this is a booking payment session
       if (session.metadata?.type === "booking_payment") {
         const bookingId = session.metadata.bookingId;
+        const tempBookingId = session.metadata.tempBookingId;
         const paymentIntentId = session.payment_intent as string;
 
-        if (bookingId && session.payment_status === "paid") {
-          await confirmBookingPayment(bookingId, paymentIntentId);
+        if (session.payment_status === "paid") {
+          // Create booking from temp booking with same ID
+          if (bookingId) {
+            try {
+              const { bookingService } = await import(
+                "../booking/booking.service"
+              );
+              await bookingService.confirmBookingAfterPayment(
+                bookingId,
+                paymentIntentId
+              );
+            } catch (error: any) {
+              console.error(
+                `Temp booking might have expired or already been processed for booking ${bookingId}:`,
+                error
+              );
+            }
+          }
+          // OLD FLOW: Backward compatibility for old temp bookings
+          else if (tempBookingId) {
+            try {
+              const { bookingService } = await import(
+                "../booking/booking.service"
+              );
+              await bookingService.confirmBookingAfterPayment(
+                tempBookingId,
+                paymentIntentId
+              );
+            } catch (error: any) {
+              console.error(
+                `Legacy booking processing error for temp booking ${tempBookingId}:`,
+                error
+              );
+            }
+          }
         }
       }
       break;
@@ -561,8 +602,41 @@ const handleBookingPaymentWebhook = async (
 
       if (paymentIntent.metadata?.type === "booking_payment") {
         const bookingId = paymentIntent.metadata.bookingId;
+        const tempBookingId = paymentIntent.metadata.tempBookingId;
+
+        // Create booking from temp booking with same ID
         if (bookingId) {
-          await confirmBookingPayment(bookingId, paymentIntent.id);
+          try {
+            const { bookingService } = await import(
+              "../booking/booking.service"
+            );
+            await bookingService.confirmBookingAfterPayment(
+              bookingId,
+              paymentIntent.id
+            );
+          } catch (error: any) {
+            console.error(
+              `Error confirming booking ${bookingId} after payment:`,
+              error
+            );
+          }
+        }
+        // Backward compatibility for old temp bookings
+        else if (tempBookingId) {
+          try {
+            const { bookingService } = await import(
+              "../booking/booking.service"
+            );
+            await bookingService.confirmBookingAfterPayment(
+              tempBookingId,
+              paymentIntent.id
+            );
+          } catch (error: any) {
+            console.error(
+              `Legacy booking processing error for temp booking ${tempBookingId}:`,
+              error
+            );
+          }
         }
       }
       break;
@@ -583,6 +657,10 @@ const handleBookingPaymentWebhook = async (
       }
       break;
     }
+
+    default:
+      // All other events are informational and already validated by handleBookingPaymentEvent
+      break;
   }
 
   return { received: true, eventType: event.type };

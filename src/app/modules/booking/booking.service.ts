@@ -7,9 +7,14 @@ import httpStatus from "http-status";
 import QRCode from "qrcode";
 import crypto from "crypto";
 import { notificationService } from "../notification/notification.service";
-import { NotificationType } from "../../models";
+import { NotificationType, TempBooking } from "../../models";
 import { processReferralRewards } from "../../../utils/ReferralRewards";
-import { on } from "events";
+import Stripe from "stripe";
+import config from "../../../config";
+
+const stripe = new Stripe(config.stripe_key as string, {
+  apiVersion: "2024-06-20",
+});
 
 type CreateBookingPayload = {
   serviceId: string;
@@ -21,7 +26,7 @@ type CreateBookingPayload = {
     longitude: number;
   };
   description?: string;
-  serviceDuration: number; // Duration in hours
+  serviceDuration: number;
   paymentMethod: "STRIPE";
 };
 
@@ -30,113 +35,415 @@ const generateCompletionCode = (): string => {
   return crypto.randomBytes(16).toString("hex");
 };
 
+// Create temp booking and initiate payment immediately
 const createBooking = async (
   customerId: string,
   payload: CreateBookingPayload
 ) => {
+  // Step 1: Validate customer
+  const customer = await User.findById(customerId);
+  if (!customer) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Customer not found");
+  }
+
+  // Step 2: Validate service
+  const service = await Service.findById(payload.serviceId).populate(
+    "providerId",
+    "email userName stripeAccountId stripeOnboardingComplete stripeAccountStatus"
+  );
+  if (!service) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
+  }
+
+  // Step 3: Validate scheduled date
+  const scheduledDate =
+    typeof payload.scheduledAt === "string"
+      ? new Date(payload.scheduledAt)
+      : payload.scheduledAt;
+
+  if (scheduledDate <= new Date()) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Scheduled date must be in the future"
+    );
+  }
+
+  // Step 4: Validate service duration
+  if (payload.serviceDuration <= 0) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Service duration must be greater than 0"
+    );
+  }
+
+  // Step 5: Calculate total amount
+  const ratePerHour = parseFloat(service.rateByHour);
+  const totalAmount = ratePerHour * payload.serviceDuration;
+
+  // Step 6: Validate provider's Stripe account
+  const provider = service.providerId as any;
+  if (!provider || !provider.stripeAccountId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Provider has not connected their Stripe account. Cannot create booking."
+    );
+  }
+
+  if (
+    !provider.stripeOnboardingComplete ||
+    provider.stripeAccountStatus !== "active"
+  ) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Provider's Stripe account is not active. Cannot create booking."
+    );
+  }
+
+  // Step 7: Check for booking conflicts (PENDING or ONGOING bookings)
+  const scheduledEndTime = new Date(scheduledDate);
+  scheduledEndTime.setHours(
+    scheduledEndTime.getHours() + payload.serviceDuration
+  );
+
+  const conflictingBooking = await Booking.findOne({
+    providerId: provider._id,
+    status: { $in: ["PENDING", "ONGOING"] },
+    $or: [
+      {
+        // New booking starts during existing booking
+        scheduledAt: { $lte: scheduledDate },
+        $expr: {
+          $gte: [
+            {
+              $add: [
+                "$scheduledAt",
+                { $multiply: ["$serviceDuration", 60 * 60 * 1000] },
+              ],
+            },
+            scheduledDate,
+          ],
+        },
+      },
+      {
+        // New booking ends during existing booking
+        scheduledAt: { $lt: scheduledEndTime },
+        $expr: {
+          $gte: [
+            {
+              $add: [
+                "$scheduledAt",
+                { $multiply: ["$serviceDuration", 60 * 60 * 1000] },
+              ],
+            },
+            scheduledEndTime,
+          ],
+        },
+      },
+      {
+        // New booking completely overlaps existing booking
+        scheduledAt: { $gte: scheduledDate, $lt: scheduledEndTime },
+      },
+    ],
+  });
+
+  if (conflictingBooking) {
+    throw new ApiError(
+      httpStatus.CONFLICT,
+      `This provider already has a ${conflictingBooking.status.toLowerCase()} booking at this time. Please choose a different time slot.`
+    );
+  }
+
+  // Step 8: Generate unique booking ID (will be used for both temp and permanent)
+  const bookingId = new mongoose.Types.ObjectId();
+
+  // Step 9: Create temporary booking with pre-generated ID
+  const tempBookingData = {
+    customerId,
+    serviceId: service._id,
+    providerId: provider._id,
+    scheduledAt: scheduledDate,
+    phoneNumber: payload.phoneNumber,
+    address: payload.address,
+    description: payload.description,
+    serviceDuration: payload.serviceDuration,
+    totalAmount: totalAmount,
+    paymentMethod: payload.paymentMethod,
+  };
+
+  const tempBooking = await TempBooking.create({
+    _id: bookingId,
+    ...tempBookingData,
+  });
+
+  // Step 10: Get or create Stripe customer for owner
+  let ownerStripeCustomerId = customer.stripeCustomerId;
+
+  // Check for currency conflicts
+  if (ownerStripeCustomerId) {
+    try {
+      const existingCustomer = await stripe.customers.retrieve(
+        ownerStripeCustomerId
+      );
+
+      if (existingCustomer && !existingCustomer.deleted) {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: ownerStripeCustomerId,
+          limit: 1,
+        });
+
+        // If customer has USD subscriptions, create new EUR customer
+        if (subscriptions.data.length > 0) {
+          const newCustomer = await stripe.customers.create({
+            email: customer.email,
+            name: customer.userName,
+            metadata: {
+              userId: customer._id.toString(),
+              currency: "EUR",
+              migratedFrom: ownerStripeCustomerId,
+            },
+          });
+
+          ownerStripeCustomerId = newCustomer.id;
+          await User.findByIdAndUpdate(customer._id, {
+            stripeCustomerId: newCustomer.id,
+            stripeCustomerIdUSD: customer.stripeCustomerId,
+          });
+        }
+      }
+    } catch (error: any) {
+      if (error.code === "resource_missing" || error.statusCode === 404) {
+        ownerStripeCustomerId = "";
+      }
+    }
+  }
+
+  // Create new customer if needed
+  if (!ownerStripeCustomerId) {
+    const newCustomer = await stripe.customers.create({
+      email: customer.email,
+      name: customer.userName,
+      metadata: {
+        userId: customer._id.toString(),
+        currency: "EUR",
+      },
+    });
+    ownerStripeCustomerId = newCustomer.id;
+    await User.findByIdAndUpdate(customer._id, {
+      stripeCustomerId: newCustomer.id,
+    });
+  }
+
+  // Step 11: Create Stripe Checkout Session
+  const successUrl = `${config.payment_success_url}`;
+  const cancelUrl = `${config.payment_cancel_url}`;
+
+  const session = await stripe.checkout.sessions.create({
+    customer: ownerStripeCustomerId,
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        price_data: {
+          currency: "eur",
+          product_data: {
+            name: `Service Booking - ${service.name}`,
+            description: `${
+              payload.serviceDuration
+            }h service on ${scheduledDate.toLocaleDateString()}`,
+          },
+          unit_amount: Math.round(totalAmount * 100), // Convert to cents
+        },
+        quantity: 1,
+      },
+    ],
+    mode: "payment",
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: {
+      bookingId: bookingId.toString(),
+      customerId: customer._id.toString(),
+      serviceId: service._id.toString(),
+      providerId: provider._id.toString(),
+      providerStripeAccountId: provider.stripeAccountId,
+      type: "booking_payment",
+    },
+    payment_intent_data: {
+      description: `Booking for ${service.name}`,
+      metadata: {
+        bookingId: bookingId.toString(),
+        customerId: customer._id.toString(),
+        serviceId: service._id.toString(),
+        providerId: provider._id.toString(),
+        providerStripeAccountId: provider.stripeAccountId,
+        type: "booking_payment",
+      },
+      // Direct transfer to provider
+      transfer_data: {
+        destination: provider.stripeAccountId,
+      },
+    },
+  });
+
+  // Step 12: Update temp booking with session ID
+  await TempBooking.findByIdAndUpdate(bookingId, {
+    stripeSessionId: session.id,
+  });
+
+  // Step 13: Return payment URL and booking info
+  return {
+    bookingId: bookingId.toString(),
+    sessionId: session.id,
+    paymentUrl: session.url,
+    totalAmount: totalAmount,
+    serviceName: service.name,
+    scheduledAt: scheduledDate,
+    message:
+      "Temporary booking created. Please complete payment to confirm your booking.",
+  };
+};
+
+// Confirm booking after successful payment with retry logic
+const confirmBookingAfterPayment = async (
+  bookingId: string,
+  paymentIntentId: string,
+  retryCount = 0
+): Promise<any> => {
+  const MAX_RETRIES = 3;
+
+  // Step 1: Check if booking already exists OUTSIDE transaction (faster)
+  const existingBooking = await Booking.findById(bookingId);
+
+  if (existingBooking && existingBooking.payment.status === "PAID") {
+    // Booking already confirmed, clean up temp booking
+    await TempBooking.findByIdAndDelete(bookingId);
+    return existingBooking;
+  }
+
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
 
-    const customer = await User.findById(customerId).session(session);
-    if (!customer) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Customer not found");
-    }
+    // Step 2: Find and delete temp booking atomically
+    const tempBooking = await TempBooking.findByIdAndDelete(bookingId).session(
+      session
+    );
 
-    const service = await Service.findById(payload.serviceId).session(session);
-    if (!service) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
-    }
+    if (!tempBooking) {
+      // Temp booking might have expired or already been processed
+      await session.abortTransaction();
 
-    const scheduledDate =
-      typeof payload.scheduledAt === "string"
-        ? new Date(payload.scheduledAt)
-        : payload.scheduledAt;
+      // Double-check if booking was created by another webhook
+      const bookingCreated = await Booking.findById(bookingId);
 
-    if (scheduledDate <= new Date()) {
+      if (bookingCreated) {
+        return bookingCreated;
+      }
+
       throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        "Scheduled date must be in the future"
+        httpStatus.NOT_FOUND,
+        "Temporary booking not found or already processed"
       );
     }
 
-    // Validate service duration
-    if (payload.serviceDuration <= 0) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        "Service duration must be greater than 0"
-      );
-    }
-
-    // Calculate total amount
-    const ratePerHour = parseFloat(service.rateByHour);
-    const totalAmount = ratePerHour * payload.serviceDuration;
-
-    // Create booking
+    // Step 3: Create permanent booking with same ID
     const bookingData = {
-      customerId,
-      serviceId: service._id,
-      providerId: service.providerId,
-      scheduledAt: new Date(payload.scheduledAt),
-      phoneNumber: payload.phoneNumber,
-      address: payload.address,
-      description: payload.description,
-      serviceDuration: payload.serviceDuration,
-      totalAmount: totalAmount,
+      _id: bookingId,
+      customerId: tempBooking.customerId,
+      serviceId: tempBooking.serviceId,
+      providerId: tempBooking.providerId,
+      scheduledAt: tempBooking.scheduledAt,
+      phoneNumber: tempBooking.phoneNumber,
+      address: tempBooking.address,
+      description: tempBooking.description,
+      serviceDuration: tempBooking.serviceDuration,
+      totalAmount: tempBooking.totalAmount,
       status: "PENDING" as const,
       payment: {
-        method: payload.paymentMethod,
-        status: "UNPAID" as const, // Always unpaid initially, will be updated when payment is processed
-        transactionId: undefined, // Will be set when payment is processed
+        method: tempBooking.paymentMethod,
+        status: "PAID" as const,
+        stripePaymentIntentId: paymentIntentId,
+        paidAt: new Date(),
       },
     };
 
     const booking = await Booking.create([bookingData], { session });
+    const createdBooking = booking[0];
 
     await session.commitTransaction();
 
-    // Send notifications after transaction commits
-    const createdBooking = booking[0];
+    // Step 5: Send notifications (after transaction commits)
+    const service = await Service.findById(createdBooking.serviceId);
+    if (!service) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
+    }
 
     // Notify provider about new booking request
-    if (service.providerId) {
+    if (createdBooking.providerId) {
       await notificationService.createNotification({
-        recipientId: service.providerId.toString(),
-        senderId: customerId,
+        recipientId: createdBooking.providerId.toString(),
+        senderId: createdBooking.customerId.toString(),
         type: NotificationType.BOOKING_CREATED,
-        title: "New Booking Request",
-        message: `You have a new pending booking request for ${service.name}`,
+        title: "New Booking Request!",
+        message: `You have a new paid booking request for ${service.name}. The payment is already completed.`,
         data: {
           bookingId: createdBooking._id.toString(),
           serviceId: service._id.toString(),
           serviceName: service.name,
           scheduledAt: createdBooking.scheduledAt,
+          totalAmount: createdBooking.totalAmount,
         },
       });
     }
 
-    // Notify owner/customer that booking was created
+    // Notify customer that booking was confirmed
     await notificationService.createNotification({
-      recipientId: customerId,
+      recipientId: createdBooking.customerId.toString(),
       type: NotificationType.BOOKING_CREATED,
-      title: "Booking Request Sent",
-      message: `Your booking request for ${service.name} has been sent successfully`,
+      title: "Booking Confirmed!",
+      message: `Your booking request for ${service.name} has been confirmed. Payment completed successfully.`,
       data: {
         bookingId: createdBooking._id.toString(),
         serviceId: service._id.toString(),
         serviceName: service.name,
         scheduledAt: createdBooking.scheduledAt,
+        totalAmount: createdBooking.totalAmount,
       },
     });
 
-    // Return populated booking
+    // Step 6: Return populated booking
     const populatedBooking = await Booking.findById(createdBooking._id)
-      .populate("serviceId", "name rateByHour")
-      .populate("providerId", "userName profilePicture");
+      .populate("serviceId", "name rateByHour coverImages")
+      .populate("providerId", "userName profilePicture email");
 
     return populatedBooking;
-  } catch (error) {
+  } catch (error: any) {
     await session.abortTransaction();
+
+    // Handle write conflict errors with retry
+    if (
+      error.message?.includes("Write conflict") ||
+      error.code === 112 ||
+      error.codeName === "WriteConflict"
+    ) {
+      if (retryCount < MAX_RETRIES) {
+        // Wait with exponential backoff
+        await new Promise((resolve) =>
+          setTimeout(resolve, 100 * Math.pow(2, retryCount))
+        );
+        return confirmBookingAfterPayment(
+          bookingId,
+          paymentIntentId,
+          retryCount + 1
+        );
+      } else {
+        // Last attempt: Check if booking was created successfully
+        const finalCheck = await Booking.findById(bookingId);
+
+        if (finalCheck) {
+          return finalCheck;
+        }
+      }
+    }
+
     throw error;
   } finally {
     session.endSession();
@@ -690,7 +997,7 @@ const getOwnerAllPendingBookings = async (ownerId: string) => {
     status: "PENDING",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ createdAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -718,7 +1025,7 @@ const getProviderAllPendingBookings = async (providerId: string) => {
     status: "PENDING",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ createdAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -785,7 +1092,7 @@ const getProviderAllOngoingBookings = async (providerId: string) => {
     status: "ONGOING",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ createdAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -813,7 +1120,7 @@ const getOwnerAllOngoingBookings = async (ownerId: string) => {
     status: "ONGOING",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ createdAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -841,7 +1148,7 @@ const getOwnerAllCancelledBookings = async (ownerId: string) => {
     status: "CANCELLED",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ updatedAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -869,7 +1176,7 @@ const getProviderAllCancelledBookings = async (providerId: string) => {
     status: "CANCELLED",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ updatedAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -897,7 +1204,7 @@ const getProviderAllCompletedBookings = async (providerId: string) => {
     status: "COMPLETED",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ updatedAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -925,7 +1232,7 @@ const getOwnerAllCompletedBookings = async (ownerId: string) => {
     status: "COMPLETED",
   })
     .populate("serviceId", "name rateByHour coverImages")
-    .sort({ scheduledAt: 1 });
+    .sort({ updatedAt: -1 });
 
   const transformedBookings = bookings.map((booking) => ({
     id: booking.id,
@@ -1080,6 +1387,7 @@ const giveRatingAndReview = async (
 
 export const bookingService = {
   createBooking,
+  confirmBookingAfterPayment,
   getBookingsByCustomer,
   getBookingsByProvider,
   getOwnerAllOngoingBookings,

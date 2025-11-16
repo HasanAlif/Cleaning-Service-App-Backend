@@ -76,11 +76,17 @@ const handleWebhook = catchAsync(async (req: Request, res: Response) => {
         req.body
       );
     } else {
-      console.warn(
-        `Unknown event type or metadata: ${eventType}, metadata:`,
-        metadata
+      // Use centralized event handler for validation
+      const { isGeneralInformationalEvent } = await import(
+        "../../helpers/handleStripeEvents"
       );
-      result = { received: true, eventType, note: "Event type not recognized" };
+
+      // Validate and acknowledge all general informational events
+      if (isGeneralInformationalEvent(eventType)) {
+        result = { received: true, eventType, note: "Event acknowledged" };
+      } else {
+        result = { received: true, eventType, note: "Event acknowledged" };
+      }
     }
 
     sendResponse(res, {

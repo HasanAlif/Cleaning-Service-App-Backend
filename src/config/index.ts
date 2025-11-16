@@ -23,7 +23,7 @@ export default {
 
   stripe_key: process.env.STRIPE_SECRET_KEY,
   stripe_webhook_secret: process.env.STRIPE_WEBHOOK_SECRET,
-  frontend_url: process.env.FRONTEND_URL || "http://localhost:3000",
+  frontend_url: process.env.FRONTEND_URL || "http://103.159.73.129:3000",
   payment_success_url: process.env.PAYMENT_SUCCESS_URL,
   payment_cancel_url: process.env.PAYMENT_CANCEL_URL,
 
