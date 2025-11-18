@@ -13,6 +13,11 @@ import * as notificationService from "../notification/notification.service";
 import { NotificationType } from "../../models";
 import { Referral } from "../../models/Referral.model";
 import {
+  Transaction,
+  TransactionType,
+  TransactionStatus,
+} from "../../models/Transaction.model";
+import {
   findMatchingUsers,
   findMatchingCategories,
   findMatchingServices,
@@ -299,14 +304,106 @@ const totalCount = async (year?: number) => {
 
   const ownerMonthlyData = formatMonthlyData(ownerMonthlyGrowth);
 
+  // Calculate monthly subscription earnings for the target year
+  const monthlyEarningsData = await Transaction.aggregate([
+    {
+      $match: {
+        transactionType: {
+          $in: [
+            TransactionType.SUBSCRIPTION_PURCHASE,
+            TransactionType.SUBSCRIPTION_RENEWAL,
+          ],
+        },
+        status: TransactionStatus.COMPLETED,
+        completedAt: {
+          $gte: new Date(`${targetYear}-01-01`),
+          $lte: new Date(`${targetYear}-12-31T23:59:59`),
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { $month: "$completedAt" },
+        earnings: { $sum: "$amount" },
+      },
+    },
+    {
+      $sort: { _id: 1 },
+    },
+  ]);
+
+  // Calculate total admin earnings from all subscription purchases (all time)
+  const totalSubscriptionTransactions = await Transaction.aggregate([
+    {
+      $match: {
+        transactionType: {
+          $in: [
+            TransactionType.SUBSCRIPTION_PURCHASE,
+            TransactionType.SUBSCRIPTION_RENEWAL,
+          ],
+        },
+        status: TransactionStatus.COMPLETED,
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalEarnings: { $sum: "$amount" },
+      },
+    },
+  ]);
+
+  const totalAdminEarnings =
+    totalSubscriptionTransactions.length > 0
+      ? totalSubscriptionTransactions[0].totalEarnings
+      : 0;
+
+  // Format monthly earnings data - show all 12 months like ownerOverview
+  const formatMonthlyEarnings = (monthlyData: any[]) => {
+    const formattedData = [];
+    let cumulativeEarnings = 0;
+    let previousMonthTotal = 0;
+
+    for (let i = 1; i <= 12; i++) {
+      const monthData = monthlyData.find((m) => m._id === i);
+      const newEarnings = monthData ? monthData.earnings : 0;
+      cumulativeEarnings += newEarnings;
+
+      let growthPercentage = 0;
+      if (previousMonthTotal > 0) {
+        growthPercentage = (newEarnings / previousMonthTotal) * 100;
+      } else if (newEarnings > 0) {
+        growthPercentage = 100;
+      }
+
+      formattedData.push({
+        month: monthNames[i - 1],
+        earnings: parseFloat(newEarnings.toFixed(2)),
+        growthPercentage: parseFloat(growthPercentage.toFixed(2)),
+      });
+
+      previousMonthTotal =
+        cumulativeEarnings > 0 ? cumulativeEarnings : newEarnings;
+    }
+
+    return formattedData;
+  };
+
+  const earningsMonthlyData = formatMonthlyEarnings(monthlyEarningsData);
+
   return {
     summary: {
       totalOwners,
       totalProviders,
+      totalAdminEarnings: parseFloat(totalAdminEarnings.toFixed(2)),
     },
     ownerOverview: {
       year: targetYear,
       monthlyOverview: ownerMonthlyData,
+    },
+    earningsOverview: {
+      year: targetYear,
+      monthlyOverview: earningsMonthlyData,
     },
   };
 };
@@ -328,7 +425,7 @@ const getIndividualUserDetails = async (userId: string) => {
   }
 
   const user = await User.findById(userId).select(
-    "_id userName email role phoneNumber address createdAt experience aboutMe NIDFront referredBy"
+    "_id userName email profilePicture role phoneNumber address createdAt experience aboutMe NIDFront referredBy"
   );
 
   if (!user) {
@@ -339,6 +436,7 @@ const getIndividualUserDetails = async (userId: string) => {
     return {
       _id: user._id,
       userName: user.userName,
+      profilePicture: user.profilePicture,
       role: user.role,
       createdAt: user.createdAt,
       phoneNumber: user.phoneNumber,
@@ -350,6 +448,7 @@ const getIndividualUserDetails = async (userId: string) => {
     return {
       _id: user._id,
       userName: user.userName,
+      profilePicture: user.profilePicture,
       role: user.role,
       createdAt: user.createdAt,
       phoneNumber: user.phoneNumber,
