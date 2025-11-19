@@ -31,20 +31,16 @@ async function startServer() {
 
 async function main() {
   await startServer();
+
   const exitHandler = () => {
     if (server) {
       server.close(() => {
         console.info("Server closed!");
-        restartServer();
+        process.exit(0);
       });
     } else {
       process.exit(1);
     }
-  };
-
-  const restartServer = () => {
-    console.info("Restarting server...");
-    main();
   };
 
   process.on("uncaughtException", (error) => {
