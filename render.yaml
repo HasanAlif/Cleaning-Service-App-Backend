@@ -5,7 +5,7 @@ services:
     region: frankfurt
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: node ./dist/server.js
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
