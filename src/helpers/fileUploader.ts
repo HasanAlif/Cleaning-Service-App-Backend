@@ -60,10 +60,11 @@ const userMutipleFiles = upload.fields([
   { name: "image", maxCount: 1 },
 ]);
 
-// ✅ Enhanced Cloudinary Upload with better file handling
+// ✅ Enhanced Cloudinary Upload with retry logic
 const uploadToCloudinary = async (
   file: Express.Multer.File,
-  folder: string = "uploads"
+  folder: string = "uploads",
+  retries: number = 3
 ): Promise<{ Location: string; public_id: string }> => {
   if (!file) {
     throw new Error("File is required for uploading.");
@@ -75,32 +76,67 @@ const uploadToCloudinary = async (
       .toString(36)
       .substring(2)}_${file.originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`;
 
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder: folder,
-        resource_type: "auto", // Supports images, videos, etc.
-        public_id: uniqueFilename.split(".")[0], // Remove extension for public_id
-        unique_filename: true,
-        overwrite: false,
-        quality: "auto",
-        fetch_format: "auto",
-      },
-      (error, result) => {
-        if (error) {
-          console.error("Error uploading file to Cloudinary:", error);
-          return reject(error);
+    const attemptUpload = (attemptNumber: number) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: folder,
+          resource_type: "auto",
+          public_id: uniqueFilename.split(".")[0],
+          unique_filename: true,
+          overwrite: false,
+          quality: "auto",
+          fetch_format: "auto",
+          timeout: 60000, // 60 seconds timeout
+        },
+        (error, result) => {
+          if (error) {
+            // Retry on network errors
+            if (
+              (error.message?.includes("ECONNRESET") ||
+                error.message?.includes("ETIMEDOUT") ||
+                error.message?.includes("ENOTFOUND")) &&
+              attemptNumber < retries
+            ) {
+              console.error(
+                `Cloudinary upload failed (attempt ${attemptNumber}/${retries}), retrying...`
+              );
+              setTimeout(
+                () => attemptUpload(attemptNumber + 1),
+                1000 * attemptNumber
+              );
+              return;
+            }
+
+            console.error("Error uploading file to Cloudinary:", error);
+            return reject(error);
+          }
+
+          resolve({
+            Location: result?.secure_url || "",
+            public_id: result?.public_id || "",
+          });
         }
+      );
 
-        // ✅ Explicitly return `Location` and `public_id`
-        resolve({
-          Location: result?.secure_url || "", // Cloudinary URL
-          public_id: result?.public_id || "",
-        });
-      }
-    );
+      // Convert buffer to stream and upload
+      const readStream = streamifier.createReadStream(file.buffer);
 
-    // Convert buffer to stream and upload
-    streamifier.createReadStream(file.buffer).pipe(uploadStream);
+      readStream.on("error", (streamError) => {
+        console.error("Stream error:", streamError);
+        if (attemptNumber < retries) {
+          setTimeout(
+            () => attemptUpload(attemptNumber + 1),
+            1000 * attemptNumber
+          );
+        } else {
+          reject(streamError);
+        }
+      });
+
+      readStream.pipe(uploadStream);
+    };
+
+    attemptUpload(1);
   });
 };
 
@@ -183,7 +219,6 @@ const deleteFromCloudinary = async (url: string): Promise<boolean> => {
   }
 };
 
-// ✅ No Name Changes, Just Fixes
 export const fileUploader = {
   upload,
   uploadSingle,

@@ -35,7 +35,6 @@ async function main() {
   const exitHandler = () => {
     if (server) {
       server.close(() => {
-        console.info("Server closed!");
         process.exit(0);
       });
     } else {
@@ -44,23 +43,22 @@ async function main() {
   };
 
   process.on("uncaughtException", (error) => {
-    console.log("Uncaught Exception: ", error);
+    console.error("Uncaught Exception:", error);
     exitHandler();
   });
 
   process.on("unhandledRejection", (error) => {
-    console.log("Unhandled Rejection: ", error);
-    exitHandler();
+    console.error("Unhandled Rejection:", error);
+    // Don't exit on unhandled rejections - just log them
+    // This prevents Cloudinary/network errors from killing the server
   });
 
   // Handling the server shutdown with SIGTERM and SIGINT
   process.on("SIGTERM", () => {
-    console.log("SIGTERM signal received. Shutting down gracefully...");
     exitHandler();
   });
 
   process.on("SIGINT", () => {
-    console.log("SIGINT signal received. Shutting down gracefully...");
     exitHandler();
   });
 }

@@ -14,6 +14,7 @@ export const corsOptions = {
     "http://localhost:5173",
     "http://localhost:517",
     "http://localhost:3000",
+    "https://cleaning-service-kappa.vercel.app/",
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],

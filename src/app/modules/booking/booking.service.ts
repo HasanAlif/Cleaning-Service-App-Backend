@@ -378,12 +378,41 @@ const confirmBookingAfterPayment = async (
 
     // Notify provider about new booking request
     if (createdBooking.providerId) {
+      const providerIdStr =
+        createdBooking.providerId?._id?.toString() ||
+        createdBooking.providerId?.toString();
+      const customerIdStr =
+        createdBooking.customerId?._id?.toString() ||
+        createdBooking.customerId?.toString();
+
+      if (providerIdStr && customerIdStr) {
+        await notificationService.createNotification({
+          recipientId: providerIdStr,
+          senderId: customerIdStr,
+          type: NotificationType.BOOKING_CREATED,
+          title: "New Booking Request!",
+          message: `You have a new paid booking request for ${service.name}. The payment is already completed.`,
+          data: {
+            bookingId: createdBooking._id.toString(),
+            serviceId: service._id.toString(),
+            serviceName: service.name,
+            scheduledAt: createdBooking.scheduledAt,
+            totalAmount: createdBooking.totalAmount,
+          },
+        });
+      }
+    }
+
+    // Notify customer that booking was confirmed
+    const customerNotifIdStr =
+      createdBooking.customerId?._id?.toString() ||
+      createdBooking.customerId?.toString();
+    if (customerNotifIdStr) {
       await notificationService.createNotification({
-        recipientId: createdBooking.providerId.toString(),
-        senderId: createdBooking.customerId.toString(),
+        recipientId: customerNotifIdStr,
         type: NotificationType.BOOKING_CREATED,
-        title: "New Booking Request!",
-        message: `You have a new paid booking request for ${service.name}. The payment is already completed.`,
+        title: "Booking Confirmed!",
+        message: `Your booking request for ${service.name} has been confirmed. Payment completed successfully.`,
         data: {
           bookingId: createdBooking._id.toString(),
           serviceId: service._id.toString(),
@@ -393,21 +422,6 @@ const confirmBookingAfterPayment = async (
         },
       });
     }
-
-    // Notify customer that booking was confirmed
-    await notificationService.createNotification({
-      recipientId: createdBooking.customerId.toString(),
-      type: NotificationType.BOOKING_CREATED,
-      title: "Booking Confirmed!",
-      message: `Your booking request for ${service.name} has been confirmed. Payment completed successfully.`,
-      data: {
-        bookingId: createdBooking._id.toString(),
-        serviceId: service._id.toString(),
-        serviceName: service.name,
-        scheduledAt: createdBooking.scheduledAt,
-        totalAmount: createdBooking.totalAmount,
-      },
-    });
 
     // Step 6: Return populated booking
     const populatedBooking = await Booking.findById(createdBooking._id)
@@ -477,22 +491,24 @@ const getBookingsByCustomer = async (
     .limit(limit);
 
   // Transform the response to only include required fields
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return {
     bookings: transformedBookings,
@@ -532,23 +548,24 @@ const getBookingsByProvider = async (
     .limit(limit);
 
   // Transform the response to only include required fields
-  // Transform the response to only include required fields
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
   return {
     bookings: transformedBookings,
     pagination: {
@@ -580,8 +597,12 @@ const getOwnerBookingOverview = async (bookingId: string, userId: string) => {
   }
 
   // Check if user is authorized to view this booking
-  const isCustomer = booking.customerId._id.toString() === userId;
-  const isProvider = booking.providerId?._id.toString() === userId;
+  const customerIdStr =
+    booking.customerId?._id?.toString() || booking.customerId?.toString() || "";
+  const providerIdStr =
+    booking.providerId?._id?.toString() || booking.providerId?.toString() || "";
+  const isCustomer = customerIdStr === userId;
+  const isProvider = providerIdStr === userId;
 
   if (!isCustomer && !isProvider) {
     throw new ApiError(httpStatus.FORBIDDEN, "Access denied");
@@ -594,28 +615,28 @@ const getOwnerBookingOverview = async (bookingId: string, userId: string) => {
   const response = {
     id: booking._id,
     service: {
-      name: service.name,
+      name: service?.name || "Service Unavailable",
       oneImage:
-        service.coverImages && service.coverImages.length > 0
+        service?.coverImages && service.coverImages.length > 0
           ? service.coverImages[0]
           : null,
-      rateByHour: service.rateByHour,
-      ratingsAverage: service.ratingsAverage,
-      ratings: service.ratings,
-      reviews: service.reviews,
-      totalOrders: service.totalOrders,
-      instantBooking: service.needApproval,
-      description: service.description,
-      allImages: service.coverImages || [],
+      rateByHour: service?.rateByHour || 0,
+      ratingsAverage: service?.ratingsAverage || 0,
+      ratings: service?.ratings || 0,
+      reviews: service?.reviews || 0,
+      totalOrders: service?.totalOrders || 0,
+      instantBooking: service?.needApproval || false,
+      description: service?.description || "",
+      allImages: service?.coverImages || [],
     },
     provider: {
-      id: provider._id,
-      name: provider.userName,
-      phoneNumber: provider.phoneNumber,
-      email: provider.email,
-      address: provider.address,
-      experience: provider.experience,
-      aboutMe: provider.aboutMe,
+      id: provider?._id || null,
+      name: provider?.userName || "Unknown Provider",
+      phoneNumber: provider?.phoneNumber || "",
+      email: provider?.email || "",
+      address: provider?.address || null,
+      experience: provider?.experience || "",
+      aboutMe: provider?.aboutMe || "",
     },
   };
 
@@ -654,25 +675,25 @@ const getProviderBookingOverview = async (
     id: booking._id,
     booking: {
       scheduledAt: booking.scheduledAt,
-      name: service.name,
+      name: service?.name || "Service Unavailable",
       oneImage:
-        service.coverImages && service.coverImages.length > 0
+        service?.coverImages && service.coverImages.length > 0
           ? service.coverImages[0]
           : null,
       address: booking.address,
       phoneNumber: booking.phoneNumber,
       description: booking.description,
-      rateByHour: service.rateByHour,
+      rateByHour: service?.rateByHour || 0,
       serviceDuration: booking.serviceDuration,
       totalAmount: booking.totalAmount,
       status: booking.status,
     },
     customer: {
-      id: customer._id,
-      name: customer.userName,
-      phoneNumber: customer.phoneNumber,
-      email: customer.email,
-      address: customer.address,
+      id: customer?._id || null,
+      name: customer?.userName || "Unknown Customer",
+      phoneNumber: customer?.phoneNumber || "",
+      email: customer?.email || "",
+      address: customer?.address || null,
       description: booking.description,
     },
   };
@@ -715,33 +736,36 @@ const acceptBookingByProvider = async (
 
   // Send notifications
   // Notify owner that booking was accepted
-  await notificationService.createNotification({
-    recipientId: updatedBooking!.customerId.toString(),
-    senderId: providerId,
-    type: NotificationType.BOOKING_ACCEPTED,
-    title: "Booking Accepted",
-    message: `Your booking request for ${
-      (updatedBooking!.serviceId as any).name
-    } has been confirmed by the provider`,
-    data: {
-      bookingId: bookingId,
-      serviceId: updatedBooking!.serviceId._id.toString(),
-      serviceName: (updatedBooking!.serviceId as any).name,
-    },
-  });
+  const serviceName = (updatedBooking!.serviceId as any)?.name || "a service";
+  const customerIdStr =
+    updatedBooking!.customerId?._id?.toString() ||
+    updatedBooking!.customerId?.toString() ||
+    "";
+  if (customerIdStr) {
+    await notificationService.createNotification({
+      recipientId: customerIdStr,
+      senderId: providerId,
+      type: NotificationType.BOOKING_ACCEPTED,
+      title: "Booking Accepted",
+      message: `Your booking request for ${serviceName} has been confirmed by the provider`,
+      data: {
+        bookingId: bookingId,
+        serviceId: updatedBooking!.serviceId?._id?.toString() || bookingId,
+        serviceName: serviceName,
+      },
+    });
+  }
 
   // Notify provider (confirmation for themselves)
   await notificationService.createNotification({
     recipientId: providerId,
     type: NotificationType.BOOKING_ACCEPTED,
     title: "Booking Confirmed",
-    message: `You have confirmed the booking request for ${
-      (updatedBooking!.serviceId as any).name
-    }`,
+    message: `You have confirmed the booking request for ${serviceName}`,
     data: {
       bookingId: bookingId,
-      serviceId: updatedBooking!.serviceId._id.toString(),
-      serviceName: (updatedBooking!.serviceId as any).name,
+      serviceId: updatedBooking!.serviceId?._id?.toString() || bookingId,
+      serviceName: serviceName,
     },
   });
 
@@ -794,7 +818,9 @@ const cancelBookingByOwner = async (bookingId: string, customerId: string) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Booking not found");
   }
 
-  if (booking.customerId.toString() !== customerId) {
+  const bookingCustomerId =
+    booking.customerId?._id?.toString() || booking.customerId?.toString() || "";
+  if (bookingCustomerId !== customerId) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
       "Only the booking owner can cancel this booking"
@@ -904,7 +930,9 @@ const completeBookingByOwner = async (
   }
 
   // Verify the owner is the correct customer
-  if (booking.customerId.toString() !== ownerId) {
+  const bookingCustomerId =
+    booking.customerId?._id?.toString() || booking.customerId?.toString() || "";
+  if (bookingCustomerId !== ownerId) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
       "You can only complete your own bookings"
@@ -935,6 +963,7 @@ const completeBookingByOwner = async (
 
   // Send notifications
   // Notify provider that booking was completed
+  const serviceName = (updatedBooking!.serviceId as any)?.name || "a service";
   let providerIdStr: string | null = null;
   if (updatedBooking!.providerId) {
     providerIdStr =
@@ -947,13 +976,11 @@ const completeBookingByOwner = async (
       senderId: ownerId,
       type: NotificationType.BOOKING_COMPLETED,
       title: "Booking Completed",
-      message: `You have successfully completed a booking for ${
-        (updatedBooking!.serviceId as any).name
-      }`,
+      message: `You have successfully completed a booking for ${serviceName}`,
       data: {
         bookingId: bookingId,
-        serviceId: updatedBooking!.serviceId._id.toString(),
-        serviceName: (updatedBooking!.serviceId as any).name,
+        serviceId: updatedBooking!.serviceId?._id?.toString() || bookingId,
+        serviceName: serviceName,
       },
     });
   }
@@ -963,13 +990,11 @@ const completeBookingByOwner = async (
     recipientId: ownerId,
     type: NotificationType.BOOKING_COMPLETED,
     title: "Service Completed",
-    message: `You have successfully enjoyed the service ${
-      (updatedBooking!.serviceId as any).name
-    }. You can now rate and review!`,
+    message: `You have successfully enjoyed the service ${serviceName}. You can now rate and review!`,
     data: {
       bookingId: bookingId,
-      serviceId: updatedBooking!.serviceId._id.toString(),
-      serviceName: (updatedBooking!.serviceId as any).name,
+      serviceId: updatedBooking!.serviceId?._id?.toString() || bookingId,
+      serviceName: serviceName,
     },
   });
 
@@ -999,22 +1024,24 @@ const getOwnerAllPendingBookings = async (ownerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ createdAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1027,22 +1054,24 @@ const getProviderAllPendingBookings = async (providerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ createdAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1076,8 +1105,8 @@ const getProviderPendingBookingsForHomepage = async (providerId: string) => {
     const customer = booking.customerId as any;
     return {
       bookingId: booking._id,
-      ownerName: customer.userName,
-      ownerProfilePicture: customer.profilePicture || null,
+      ownerName: customer?.userName || "Unknown User",
+      ownerProfilePicture: customer?.profilePicture || null,
       bookingDateTime: booking.scheduledAt,
       timeAgo: getTimeAgo(booking.createdAt),
     };
@@ -1094,22 +1123,24 @@ const getProviderAllOngoingBookings = async (providerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ createdAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1122,22 +1153,24 @@ const getOwnerAllOngoingBookings = async (ownerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ createdAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1150,22 +1183,24 @@ const getOwnerAllCancelledBookings = async (ownerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ updatedAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1178,22 +1213,24 @@ const getProviderAllCancelledBookings = async (providerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ updatedAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1206,22 +1243,24 @@ const getProviderAllCompletedBookings = async (providerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ updatedAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1234,22 +1273,24 @@ const getOwnerAllCompletedBookings = async (ownerId: string) => {
     .populate("serviceId", "name rateByHour coverImages")
     .sort({ updatedAt: -1 });
 
-  const transformedBookings = bookings.map((booking) => ({
-    id: booking.id,
-    serviceName: (booking.serviceId as any).name,
-    ownerAddress: booking.address,
-    ownerPhoneNumber: booking.phoneNumber,
-    description: booking.description,
-    oneImage:
-      (booking.serviceId as any).coverImages &&
-      (booking.serviceId as any).coverImages.length > 0
-        ? (booking.serviceId as any).coverImages[0]
-        : null,
-    priceByHour: (booking.serviceId as any).rateByHour,
-    serviceDuration: booking.serviceDuration,
-    totalAmount: booking.totalAmount,
-    status: booking.status,
-  }));
+  const transformedBookings = bookings.map((booking) => {
+    const service = booking.serviceId as any;
+    return {
+      id: booking.id,
+      serviceName: service?.name || "Service Unavailable",
+      ownerAddress: booking.address,
+      ownerPhoneNumber: booking.phoneNumber,
+      description: booking.description,
+      oneImage:
+        service?.coverImages && service.coverImages.length > 0
+          ? service.coverImages[0]
+          : null,
+      priceByHour: service?.rateByHour || 0,
+      serviceDuration: booking.serviceDuration,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+    };
+  });
 
   return transformedBookings;
 };
@@ -1299,7 +1340,9 @@ const giveRatingAndReview = async (
     throw new ApiError(httpStatus.NOT_FOUND, "Booking not found");
   }
 
-  if (booking.customerId.toString() !== customerId) {
+  const bookingCustomerId =
+    booking.customerId?._id?.toString() || booking.customerId?.toString() || "";
+  if (bookingCustomerId !== customerId) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
       "You can only rate your own bookings"
