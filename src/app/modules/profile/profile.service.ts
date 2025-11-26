@@ -255,9 +255,42 @@ const ownerProfileInformation = async (
   };
 };
 
+const updateLocationAndAddress = async (
+  userId: string,
+  address: string,
+  lattitude: number,
+  longitude: number
+) => {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    {
+      address,
+      lattitude,
+      longitude,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  return {
+    _id: user._id,
+    address: user.address,
+    lattitude: user.lattitude,
+    longitude: user.longitude,
+  };
+};
+
 export const profileService = {
   providerProfileInformation,
   getProviderProfile,
   getOwnerProfile,
   ownerProfileInformation,
+  updateLocationAndAddress,
 };

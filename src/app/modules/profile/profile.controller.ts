@@ -62,9 +62,31 @@ const updateOwnerProfile = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const updateLocationAndAddress = catchAsync(
+  async (req: Request, res: Response) => {
+    const userId = req.user.id;
+    const { address, lattitude, longitude } = req.body;
+
+    const result = await profileService.updateLocationAndAddress(
+      userId,
+      address,
+      lattitude,
+      longitude
+    );
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Location and address updated successfully",
+      data: result,
+    });
+  }
+);
+
 export const profileController = {
   updateProviderProfile,
   getProviderProfile,
   getOwnerProfile,
   updateOwnerProfile,
+  updateLocationAndAddress,
 };

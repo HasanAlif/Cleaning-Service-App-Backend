@@ -37,4 +37,11 @@ router.put(
   profileController.updateOwnerProfile
 );
 
+router.put(
+  "/location",
+  auth(),
+  validateRequest(profileValidation.updateLocationAndAddress),
+  profileController.updateLocationAndAddress
+);
+
 export const profileRoutes = router;
