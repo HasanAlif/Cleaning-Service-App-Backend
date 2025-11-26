@@ -16,6 +16,7 @@ export const corsOptions = {
     "http://localhost:3000",
     "https://cleaning-service-kappa.vercel.app",
     "https://brickk-backend.onrender.com/api",
+    "http://172.252.13.3:4173/",
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
