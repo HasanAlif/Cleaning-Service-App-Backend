@@ -24,6 +24,7 @@ export const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 };
+//Commit test
 
 // Middleware setup
 app.use(cors(corsOptions));
