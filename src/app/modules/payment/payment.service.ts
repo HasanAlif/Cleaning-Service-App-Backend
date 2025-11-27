@@ -690,9 +690,171 @@ const getBookingPaymentStatus = async (bookingId: string) => {
   };
 };
 
+// Refund booking based on status (PENDING/ONGOING) - no time restriction
+// Used when: Owner cancels PENDING, Provider rejects PENDING/ONGOING bookings
+const refundBookingByStatus = async (
+  bookingId: string,
+  reason: string,
+  initiatedBy: "owner" | "provider"
+) => {
+  const booking = await Booking.findById(bookingId)
+    .populate("providerId", "userName stripeAccountId")
+    .populate("customerId", "userName");
+
+  if (!booking) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Booking not found");
+  }
+
+  // Extract IDs safely
+  const customerId =
+    typeof booking.customerId === "object" && booking.customerId._id
+      ? booking.customerId._id.toString()
+      : booking.customerId.toString();
+
+  const providerIdStr =
+    booking.providerId &&
+    typeof booking.providerId === "object" &&
+    booking.providerId._id
+      ? booking.providerId._id.toString()
+      : booking.providerId?.toString();
+
+  // Validate payment status
+  if (booking.payment.status === "REFUNDED") {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Payment has already been refunded"
+    );
+  }
+
+  if (booking.payment.status !== "PAID") {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Cannot refund unpaid booking");
+  }
+
+  // Validate booking status (must be PENDING or ONGOING, not COMPLETED)
+  if (booking.status === "COMPLETED") {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Cannot refund completed bookings"
+    );
+  }
+
+  if (booking.status === "CANCELLED") {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Booking is already cancelled");
+  }
+
+  if (!booking.payment.stripePaymentIntentId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "No payment intent found for this booking"
+    );
+  }
+
+  // Get provider's Stripe Connect account
+  const provider = booking.providerId as any;
+  const providerStripeAccountId = provider?.stripeAccountId;
+
+  if (!providerStripeAccountId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Provider Stripe account not found. Cannot process refund."
+    );
+  }
+
+  // CRITICAL: Process refund with reverse_transfer
+  // This reverses the transfer and takes money back from provider's account
+  const refund = await stripe.refunds.create({
+    payment_intent: booking.payment.stripePaymentIntentId!,
+    reverse_transfer: true, // Reverses transfer from provider
+    metadata: {
+      bookingId: booking._id.toString(),
+      providerId: providerIdStr || "",
+      providerStripeAccountId: providerStripeAccountId,
+      reason: reason,
+      initiatedBy: initiatedBy,
+    },
+  });
+
+  // Find original payment transaction for audit trail
+  const { Transaction } = await import("../../models/Transaction.model");
+  const originalTransaction = await Transaction.findOne({
+    bookingId: booking._id,
+    stripePaymentIntentId: booking.payment.stripePaymentIntentId,
+  });
+
+  // Update booking - mark as refunded and cancelled
+  booking.payment.status = "REFUNDED";
+  booking.payment.refundId = refund.id;
+  booking.payment.refundedAt = new Date();
+  booking.status = "CANCELLED";
+  await booking.save();
+
+  // Record refund transaction for audit trail
+  if (providerIdStr) {
+    await transactionService.recordBookingRefund({
+      bookingId: booking._id.toString(),
+      ownerId: customerId,
+      providerId: providerIdStr,
+      refundAmount: booking.totalAmount,
+      refundId: refund.id,
+      refundReason: reason,
+      originalTransactionId: originalTransaction?._id.toString(),
+      metadata: {
+        bookingNumber: booking._id.toString().slice(-6),
+        refundStatus: refund.status,
+        initiatedBy: initiatedBy,
+      },
+    });
+  }
+
+  // Notify provider about refund
+  if (providerIdStr) {
+    await notificationService.createNotification({
+      recipientId: providerIdStr,
+      type: NotificationType.BOOKING_CANCELLED,
+      title: "Booking Cancelled & Refunded",
+      message: `Booking #${booking._id
+        .toString()
+        .slice(-6)} has been cancelled. Payment of €${
+        booking.totalAmount
+      } has been refunded to the customer.`,
+      data: {
+        bookingId: booking._id.toString(),
+        amount: booking.totalAmount,
+        refundId: refund.id,
+        reason: reason,
+      },
+    });
+  }
+
+  // Notify owner about refund
+  await notificationService.createNotification({
+    recipientId: customerId,
+    type: NotificationType.BOOKING_CANCELLED,
+    title: "Booking Cancelled - Refund Processed",
+    message: `Your booking #${booking._id
+      .toString()
+      .slice(-6)} has been cancelled and payment of €${
+      booking.totalAmount
+    } has been refunded. Funds will be returned to your account within 5-7 business days.`,
+    data: {
+      bookingId: booking._id.toString(),
+      amount: booking.totalAmount,
+      refundId: refund.id,
+      reason: reason,
+    },
+  });
+
+  return {
+    booking,
+    refund,
+    message: "Booking cancelled and refund processed successfully",
+  };
+};
+
 export const paymentService = {
   createBookingPayment,
   refundBookingPayment,
+  refundBookingByStatus,
   getRefundEligibility,
   handleBookingPaymentWebhook,
   getBookingPaymentStatus,

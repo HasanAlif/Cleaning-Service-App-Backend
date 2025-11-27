@@ -780,7 +780,10 @@ const rejectBookingByProvider = async (
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid booking ID");
   }
 
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).populate(
+    "customerId",
+    "userName"
+  );
   if (!booking) {
     throw new ApiError(httpStatus.NOT_FOUND, "Booking not found");
   }
@@ -799,11 +802,46 @@ const rejectBookingByProvider = async (
     );
   }
 
+  // Check if payment was made - if PAID, process refund
+  if (booking.payment.status === "PAID") {
+    const { paymentService } = await import("../payment/payment.service");
+    await paymentService.refundBookingByStatus(
+      bookingId,
+      "Provider rejected the booking request",
+      "provider"
+    );
+    // Note: refundBookingByStatus already updates status to CANCELLED
+    return await Booking.findById(bookingId);
+  }
+
+  // If payment not made (UNPAID), just cancel the booking
   const updatedBooking = await Booking.findByIdAndUpdate(
     bookingId,
     { status: "CANCELLED" },
     { new: true }
   );
+
+  // Send notification to owner about rejection
+  const customerIdStr =
+    booking.customerId &&
+    typeof booking.customerId === "object" &&
+    booking.customerId._id
+      ? booking.customerId._id.toString()
+      : booking.customerId?.toString();
+
+  if (customerIdStr) {
+    await notificationService.createNotification({
+      recipientId: customerIdStr,
+      type: NotificationType.BOOKING_CANCELLED,
+      title: "Booking Request Rejected",
+      message: `Provider has rejected your booking request #${booking._id
+        .toString()
+        .slice(-6)}`,
+      data: {
+        bookingId: booking._id.toString(),
+      },
+    });
+  }
 
   return updatedBooking;
 };
@@ -813,7 +851,10 @@ const cancelBookingByOwner = async (bookingId: string, customerId: string) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid booking ID");
   }
 
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).populate(
+    "providerId",
+    "userName"
+  );
   if (!booking) {
     throw new ApiError(httpStatus.NOT_FOUND, "Booking not found");
   }
@@ -827,18 +868,62 @@ const cancelBookingByOwner = async (bookingId: string, customerId: string) => {
     );
   }
 
-  if (booking.status !== "PENDING") {
+  // Block cancellation if provider has already accepted (ONGOING status)
+  if (booking.status === "ONGOING") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Only pending bookings can be cancelled"
+      "Cannot cancel: Provider has already accepted this booking. Please contact the provider directly."
     );
   }
 
+  // Only allow cancellation of PENDING bookings
+  if (booking.status !== "PENDING") {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Only pending bookings can be cancelled by the owner"
+    );
+  }
+
+  // Check if payment was made - if PAID, process refund
+  if (booking.payment.status === "PAID") {
+    const { paymentService } = await import("../payment/payment.service");
+    await paymentService.refundBookingByStatus(
+      bookingId,
+      "Owner cancelled booking before provider acceptance",
+      "owner"
+    );
+    // Note: refundBookingByStatus already updates status to CANCELLED
+    return await Booking.findById(bookingId);
+  }
+
+  // If payment not made (UNPAID), just cancel the booking
   const updatedBooking = await Booking.findByIdAndUpdate(
     bookingId,
     { status: "CANCELLED" },
     { new: true }
   );
+
+  // Send notification to provider (if assigned)
+  const providerIdStr =
+    booking.providerId &&
+    typeof booking.providerId === "object" &&
+    booking.providerId._id
+      ? booking.providerId._id.toString()
+      : booking.providerId?.toString();
+
+  if (providerIdStr) {
+    await notificationService.createNotification({
+      recipientId: providerIdStr,
+      type: NotificationType.BOOKING_CANCELLED,
+      title: "Booking Cancelled",
+      message: `Owner has cancelled booking #${booking._id
+        .toString()
+        .slice(-6)}`,
+      data: {
+        bookingId: booking._id.toString(),
+      },
+    });
+  }
 
   return updatedBooking;
 };
