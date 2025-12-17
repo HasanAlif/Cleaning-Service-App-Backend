@@ -19,7 +19,8 @@ const stripe = new Stripe(config.stripe_key as string, {
 
 type CreateBookingPayload = {
   serviceId: string;
-  scheduledAt: string | Date;
+  scheduledDate: string;
+  scheduledTime: string;
   phoneNumber: string;
   address: {
     city: string;
@@ -58,25 +59,36 @@ const createBooking = async (
     throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
   }
 
-  // Step 3: Validate scheduled date
-  const scheduledDate =
-    typeof payload.scheduledAt === "string"
-      ? new Date(payload.scheduledAt)
-      : payload.scheduledAt;
+  // Step 3: Validate and combine scheduled date and time
+  // Combine date and time in ISO format (treating as UTC)
+  const scheduledDateTimeString = `${payload.scheduledDate}T${payload.scheduledTime}:00.000Z`;
+  const scheduledDate = new Date(scheduledDateTimeString);
 
   // Validate date is valid
   if (isNaN(scheduledDate.getTime())) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid scheduled date");
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Invalid scheduled date or time"
+    );
+  }
+
+  // Check if booking is in the past
+  const currentTime = Date.now();
+  if (scheduledDate.getTime() < currentTime) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "You cannot book a service in the past"
+    );
   }
 
   // Validate booking is at least 30 minutes in the future
   const minimumAdvanceMs = 30 * 60 * 1000; // 30 minutes in milliseconds
-  const minimumBookingTime = Date.now() + minimumAdvanceMs;
+  const minimumBookingTime = currentTime + minimumAdvanceMs;
 
   if (scheduledDate.getTime() < minimumBookingTime) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Booking must be scheduled at least 30 minutes in advance"
+      "You must book a service at least 30 minutes before it starts"
     );
   }
 

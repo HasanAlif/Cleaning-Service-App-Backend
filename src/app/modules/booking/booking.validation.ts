@@ -7,12 +7,18 @@ const createBookingSchema = z.object({
         required_error: "Service ID is required",
       })
       .min(1, "Service ID cannot be empty"),
-    scheduledAt: z
+    scheduledDate: z
       .string({
-        required_error: "Scheduled date and time is required",
+        required_error: "Scheduled date is required",
       })
-      .datetime(
-        "Invalid date format. Use ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ)"
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format. Use YYYY-MM-DD"),
+    scheduledTime: z
+      .string({
+        required_error: "Scheduled time is required",
+      })
+      .regex(
+        /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
+        "Invalid time format. Use HH:MM (24-hour format)"
       ),
     phoneNumber: z
       .string({
