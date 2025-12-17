@@ -64,10 +64,19 @@ const createBooking = async (
       ? new Date(payload.scheduledAt)
       : payload.scheduledAt;
 
-  if (scheduledDate <= new Date()) {
+  // Validate date is valid
+  if (isNaN(scheduledDate.getTime())) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid scheduled date");
+  }
+
+  // Validate booking is at least 30 minutes in the future
+  const minimumAdvanceMs = 30 * 60 * 1000; // 30 minutes in milliseconds
+  const minimumBookingTime = Date.now() + minimumAdvanceMs;
+
+  if (scheduledDate.getTime() < minimumBookingTime) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Scheduled date must be in the future"
+      "Booking must be scheduled at least 30 minutes in advance"
     );
   }
 
