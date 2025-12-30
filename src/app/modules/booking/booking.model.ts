@@ -20,6 +20,7 @@ export interface IBooking extends Document {
   address: IAddress;
   description?: string;
   serviceDuration: number;
+  bufferTime: number;
   totalAmount: number;
   status: BookingStatus;
   completionCode?: string;
@@ -89,6 +90,10 @@ const BookingSchema = new Schema<IBooking>(
     serviceDuration: {
       type: Number,
       required: true,
+    },
+    bufferTime: {
+      type: Number,
+      default: 0,
     },
     totalAmount: {
       type: Number,

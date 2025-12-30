@@ -50,7 +50,7 @@ const createBooking = async (
 
   // Step 2: Validate service
   const service = await Service.findById(payload.serviceId)
-    .select("+workSchedule")
+    .select("+workSchedule +bufferTime")
     .populate(
       "providerId",
       "email userName stripeAccountId stripeOnboardingComplete stripeAccountStatus"
@@ -206,9 +206,13 @@ const createBooking = async (
   }
 
   // Step 7: Check for booking conflicts (PENDING or ONGOING bookings)
+  // Include bufferTime in end time calculation
+  const serviceBufferTime = service.bufferTime || 0;
   const scheduledEndTime = new Date(scheduledDate);
-  scheduledEndTime.setHours(
-    scheduledEndTime.getHours() + payload.serviceDuration
+  scheduledEndTime.setMinutes(
+    scheduledEndTime.getMinutes() +
+      payload.serviceDuration * 60 +
+      serviceBufferTime
   );
 
   const conflictingBooking = await Booking.findOne({
@@ -216,7 +220,7 @@ const createBooking = async (
     status: { $in: ["PENDING", "ONGOING"] },
     $or: [
       {
-        // New booking starts during existing booking
+        // New booking starts during existing booking (including buffer)
         scheduledAt: { $lte: scheduledDate },
         $expr: {
           $gte: [
@@ -224,6 +228,7 @@ const createBooking = async (
               $add: [
                 "$scheduledAt",
                 { $multiply: ["$serviceDuration", 60 * 60 * 1000] },
+                { $multiply: ["$bufferTime", 60 * 1000] },
               ],
             },
             scheduledDate,
@@ -239,6 +244,7 @@ const createBooking = async (
               $add: [
                 "$scheduledAt",
                 { $multiply: ["$serviceDuration", 60 * 60 * 1000] },
+                { $multiply: ["$bufferTime", 60 * 1000] },
               ],
             },
             scheduledEndTime,
@@ -272,6 +278,7 @@ const createBooking = async (
     address: payload.address,
     description: payload.description,
     serviceDuration: payload.serviceDuration,
+    bufferTime: serviceBufferTime,
     totalAmount: totalAmount,
     paymentMethod: payload.paymentMethod,
   };
@@ -461,6 +468,7 @@ const confirmBookingAfterPayment = async (
       address: tempBooking.address,
       description: tempBooking.description,
       serviceDuration: tempBooking.serviceDuration,
+      bufferTime: (tempBooking as any).bufferTime || 0,
       totalAmount: tempBooking.totalAmount,
       status: "PENDING" as const,
       payment: {

@@ -19,6 +19,16 @@ const createBookingSchema = z.object({
       .regex(
         /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
         "Invalid time format. Use HH:MM (24-hour format)"
+      )
+      .refine(
+        (time) => {
+          const [, minutes] = time.split(":").map(Number);
+          return minutes % 15 === 0;
+        },
+        {
+          message:
+            "Scheduled time must be in 15-minute intervals (e.g., 09:00, 09:15, 09:30, 09:45)",
+        }
       ),
     phoneNumber: z
       .string({

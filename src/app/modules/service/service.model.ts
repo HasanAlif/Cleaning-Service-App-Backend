@@ -1,5 +1,13 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+export interface ICoverImage {
+  _id: string;
+  publicId: string;
+  url: string;
+  uploadedAt: Date;
+  order: number;
+}
+
 export interface IDaySchedule {
   day: string;
   isAvailable: boolean;
@@ -25,9 +33,11 @@ export interface IService extends Document {
   description?: string;
   rateByHour: string;
   needApproval?: boolean;
+  bufferTime?: number;
   gender: string;
   languages?: string[];
   coverImages?: string[];
+  coverImagesMeta?: ICoverImage[];
   workSchedule?: IWorkSchedule;
   ratingsAverage?: number;
   ratingsCount?: number;
@@ -75,6 +85,11 @@ const ServiceSchema = new Schema<IService>(
       type: Boolean,
       default: false,
     },
+    bufferTime: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     gender: {
       type: String,
       enum: ["Male", "Female"],
@@ -99,6 +114,14 @@ const ServiceSchema = new Schema<IService>(
     coverImages: [
       {
         type: String,
+      },
+    ],
+    coverImagesMeta: [
+      {
+        publicId: { type: String, required: true },
+        url: { type: String, required: true },
+        uploadedAt: { type: Date, default: Date.now },
+        order: { type: Number, required: true },
       },
     ],
     workSchedule: {

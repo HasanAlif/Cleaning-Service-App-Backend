@@ -6,6 +6,7 @@ import httpStatus from "http-status";
 import { Category } from "../admin/category.model";
 import { fileUploader } from "../../../helpers/fileUploader";
 import { Booking } from "../booking/booking.model";
+import { TempBooking } from "../../models/TempBooking.model";
 import haversineDistance from "../../../utils/HeversineDistance";
 import { messageService } from "../message/message.service";
 import {
@@ -157,22 +158,31 @@ const createService = async (
   }
 
   let coverImageUrls: string[] = [];
+  let coverImagesMeta: any[] = [];
 
   // Handle file uploads for cover images (support both singular and plural field names)
   const imageFiles = files?.coverImages || [];
 
   if (imageFiles && imageFiles.length > 0) {
     try {
-      const uploadPromises = imageFiles.map(async (file: any) => {
-        const result = await fileUploader.uploadToCloudinary(
-          file,
-          "service-covers"
-        );
-        return result?.Location || "";
-      });
+      const uploadPromises = imageFiles.map(
+        async (file: any, index: number) => {
+          const result = await fileUploader.uploadToCloudinary(
+            file,
+            "service-covers"
+          );
+          return {
+            publicId: result?.public_id || "",
+            url: result?.Location || "",
+            uploadedAt: new Date(),
+            order: index,
+          };
+        }
+      );
 
-      coverImageUrls = await Promise.all(uploadPromises);
-      coverImageUrls = coverImageUrls.filter((url) => url !== ""); // Remove empty URLs
+      coverImagesMeta = await Promise.all(uploadPromises);
+      coverImagesMeta = coverImagesMeta.filter((img) => img.url !== ""); // Remove empty
+      coverImageUrls = coverImagesMeta.map((img) => img.url);
     } catch (error) {
       console.error("Image upload error:", error);
     }
@@ -196,6 +206,7 @@ const createService = async (
     ...payload,
     providerId: user._id,
     coverImages: coverImageUrls,
+    coverImagesMeta: coverImagesMeta,
     workSchedule: processedWorkSchedule,
     languages: processedLanguages,
   };
@@ -400,20 +411,38 @@ const updateService = async (
   }
 
   let coverImageUrls: string[] = service.coverImages || [];
+  let coverImagesMeta: any[] = (service as any).coverImagesMeta || [];
 
   // Handle new cover image uploads
   if (files && files.coverImages) {
     try {
-      const uploadPromises = files.coverImages.map(async (file: any) => {
-        const result = await fileUploader.uploadToCloudinary(file);
-        return result?.Location || "";
-      });
+      // Get the next order number
+      const nextOrder =
+        coverImagesMeta.length > 0
+          ? Math.max(...coverImagesMeta.map((img: any) => img.order)) + 1
+          : 0;
 
-      const newImageUrls = await Promise.all(uploadPromises);
-      coverImageUrls = [
-        ...coverImageUrls,
-        ...newImageUrls.filter((url) => url !== ""),
-      ];
+      const uploadPromises = files.coverImages.map(
+        async (file: any, index: number) => {
+          const result = await fileUploader.uploadToCloudinary(
+            file,
+            "service-covers"
+          );
+          return {
+            publicId: result?.public_id || "",
+            url: result?.Location || "",
+            uploadedAt: new Date(),
+            order: nextOrder + index,
+          };
+        }
+      );
+
+      const newImagesMeta = await Promise.all(uploadPromises);
+      const validImagesMeta = newImagesMeta.filter((img) => img.url !== "");
+      const newImageUrls = validImagesMeta.map((img) => img.url);
+
+      coverImageUrls = [...coverImageUrls, ...newImageUrls];
+      coverImagesMeta = [...coverImagesMeta, ...validImagesMeta];
     } catch (error) {
       console.error("Image upload error:", error);
     }
@@ -424,6 +453,7 @@ const updateService = async (
     {
       ...payload,
       coverImages: coverImageUrls,
+      coverImagesMeta: coverImagesMeta,
       workSchedule: processedWorkSchedule,
       languages: processedLanguages,
     },
@@ -457,7 +487,24 @@ const deleteService = async (
   }
 
   // Delete cover images from Cloudinary before deleting the service
-  if (service.coverImages && service.coverImages.length > 0) {
+  // Prefer using publicId from metadata, fallback to URL parsing
+  const coverImagesMeta = (service as any).coverImagesMeta || [];
+
+  if (coverImagesMeta.length > 0) {
+    // Use metadata with publicId for efficient deletion
+    const deletePromises = coverImagesMeta.map(async (img: any) => {
+      try {
+        await fileUploader.deleteFromCloudinary(img.url);
+      } catch (error) {
+        console.error(
+          `Failed to delete image ${img.id} from Cloudinary:`,
+          error
+        );
+      }
+    });
+    await Promise.all(deletePromises);
+  } else if (service.coverImages && service.coverImages.length > 0) {
+    // Fallback to legacy URL-based deletion for old data
     const deletePromises = service.coverImages.map(async (imageUrl: string) => {
       try {
         await fileUploader.deleteFromCloudinary(imageUrl);
@@ -471,6 +518,84 @@ const deleteService = async (
   await Service.findByIdAndDelete(serviceId);
 };
 
+const deleteSinglePhoto = async (
+  serviceId: string,
+  photoId: string,
+  userId: string
+): Promise<void> => {
+  // Validate serviceId
+  if (!mongoose.Types.ObjectId.isValid(serviceId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid service ID");
+  }
+
+  const service = await Service.findById(serviceId);
+  if (!service) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
+  }
+
+  // Check if user owns this service
+  if (service.providerId.toString() !== userId) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      "You can only delete photos from your own services"
+    );
+  }
+
+  const coverImagesMeta = (service as any).coverImagesMeta || [];
+  const coverImages = service.coverImages || [];
+
+  // Find photo by ID in metadata
+  const photoIndex = coverImagesMeta.findIndex(
+    (img: any) => img._id.toString() === photoId
+  );
+
+  if (photoIndex === -1) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Photo not found");
+  }
+
+  // Ensure at least one photo remains
+  if (coverImagesMeta.length <= 1 && coverImages.length <= 1) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Cannot delete the last photo. Service must have at least one photo."
+    );
+  }
+
+  const photoToDelete = coverImagesMeta[photoIndex];
+
+  // Delete from Cloudinary using publicId
+  try {
+    if (photoToDelete.publicId) {
+      await fileUploader.deleteFromCloudinary(photoToDelete.url);
+    }
+  } catch (error) {
+    console.error("Failed to delete photo from Cloudinary:", error);
+    // Continue with database update even if Cloudinary deletion fails
+  }
+
+  // Remove photo from both arrays
+  coverImagesMeta.splice(photoIndex, 1);
+  const urlIndex = coverImages.indexOf(photoToDelete.url);
+  if (urlIndex > -1) {
+    coverImages.splice(urlIndex, 1);
+  }
+
+  // Reorder remaining photos
+  coverImagesMeta.forEach((img: any, index: number) => {
+    img.order = index;
+  });
+
+  // Update service
+  await Service.findByIdAndUpdate(
+    serviceId,
+    {
+      coverImages: coverImages,
+      coverImagesMeta: coverImagesMeta,
+    },
+    { new: true }
+  );
+};
+
 const getServicesUnderCategory = async (categoryId: string) => {
   if (!mongoose.Types.ObjectId.isValid(categoryId)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid category ID");
@@ -479,25 +604,31 @@ const getServicesUnderCategory = async (categoryId: string) => {
   const services = await Service.find({ categoryId })
     .populate("providerId", "userName profilePicture")
     .select(
-      "name coverImages ratingsAverage needApproval rateByHour providerId"
+      "name coverImages coverImagesMeta ratingsAverage needApproval rateByHour providerId"
     )
     .sort({ createdAt: -1 })
     .lean();
 
   // Transform the data to include only required fields
-  const transformedServices = services.map((service: any) => ({
-    _id: service._id,
-    serviceName: service.name,
-    serviceImage:
-      service.coverImages && service.coverImages.length > 0
-        ? service.coverImages[0]
-        : null,
-    averageRatings: service.ratingsAverage || 0,
-    providerName: service.providerId?.userName || "Unknown Provider",
-    providerProfilePicture: service.providerId?.profilePicture || null,
-    isApprovalRequired: service.needApproval || false,
-    price: service.rateByHour,
-  }));
+  const transformedServices = services.map((service: any) => {
+    const imagesMeta = service.coverImagesMeta || [];
+    const sortedImages =
+      imagesMeta.length > 0
+        ? imagesMeta.sort((a: any, b: any) => a.order - b.order)
+        : [];
+    const firstImage = sortedImages[0]?.url || service.coverImages?.[0] || null;
+
+    return {
+      _id: service._id,
+      serviceName: service.name,
+      serviceImage: firstImage,
+      averageRatings: service.ratingsAverage || 0,
+      providerName: service.providerId?.userName || "Unknown Provider",
+      providerProfilePicture: service.providerId?.profilePicture || null,
+      isApprovalRequired: service.needApproval || false,
+      price: service.rateByHour,
+    };
+  });
 
   return transformedServices;
 };
@@ -510,7 +641,7 @@ const getServiceOverview = async (serviceId: string) => {
   const service = await Service.findById(serviceId)
     .populate("providerId", "lattitude longitude")
     .select(
-      "name description coverImages ratingsAverage needApproval rateByHour providerId totalOrders"
+      "name description coverImages coverImagesMeta ratingsAverage needApproval rateByHour providerId totalOrders"
     )
     .lean();
 
@@ -518,13 +649,29 @@ const getServiceOverview = async (serviceId: string) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
   }
 
+  const imagesMeta = (service as any).coverImagesMeta || [];
+  const sortedImages =
+    imagesMeta.length > 0
+      ? imagesMeta.sort((a: any, b: any) => a.order - b.order)
+      : [];
+  const firstImage = sortedImages[0]?.url || service.coverImages?.[0] || null;
+  const allPhotos =
+    sortedImages.length > 0
+      ? sortedImages.map((img: any) => ({
+          id: img._id,
+          url: img.url,
+          uploadedAt: img.uploadedAt,
+          order: img.order,
+        }))
+      : (service.coverImages || []).map((url: string, index: number) => ({
+          url,
+          order: index,
+        }));
+
   const transformedService = {
     _id: service._id,
     name: service.name,
-    oneImage:
-      service.coverImages && service.coverImages.length > 0
-        ? service.coverImages[0]
-        : null,
+    oneImage: firstImage,
     rateByHour: service.rateByHour,
     lattitude: (service.providerId as any)?.lattitude || null,
     longitude: (service.providerId as any)?.longitude || null,
@@ -532,7 +679,7 @@ const getServiceOverview = async (serviceId: string) => {
     totalOrders: service.totalOrders || 0,
     instantBooking: service.needApproval || false,
     description: service.description || "",
-    photos: service.coverImages || [],
+    photos: allPhotos,
   };
 
   return transformedService;
@@ -630,9 +777,9 @@ const getServiceProviderAvailableSlots = async (
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid service ID");
   }
 
-  // Fetch service with workSchedule and providerId
+  // Fetch service with workSchedule, providerId and bufferTime
   const service = await Service.findById(serviceId).select(
-    "workSchedule providerId"
+    "workSchedule providerId bufferTime"
   );
 
   if (!service) {
@@ -702,8 +849,8 @@ const getServiceProviderAvailableSlots = async (
   const startMinutes = parseTimeToMinutes(daySchedule.startTime);
   const endMinutes = parseTimeToMinutes(daySchedule.endTime);
 
-  // Generate 30-minute slots
-  const SLOT_DURATION = 30;
+  // Generate 15-minute slots
+  const SLOT_DURATION = 15;
   const allSlots: { time: string; minutes: number }[] = [];
 
   for (let m = startMinutes; m < endMinutes; m += SLOT_DURATION) {
@@ -717,20 +864,30 @@ const getServiceProviderAvailableSlots = async (
   const dayStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
   const dayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 
-  // Fetch all PENDING and ONGOING bookings for this provider on this date
+  // Fetch all non-cancelled bookings for this provider on this date
   const bookings = await Booking.find({
     providerId: service.providerId,
-    status: { $in: ["PENDING", "ONGOING"] },
+    status: { $ne: "CANCELLED" },
     scheduledAt: { $gte: dayStart, $lte: dayEnd },
-  }).select("scheduledAt serviceDuration");
+  }).select("scheduledAt serviceDuration bufferTime");
 
-  // Convert bookings to time ranges in minutes
-  const bookedRanges = bookings.map((booking) => {
+  // Also fetch TempBookings (pending payment) for this provider on this date
+  const tempBookings = await TempBooking.find({
+    providerId: service.providerId,
+    scheduledAt: { $gte: dayStart, $lte: dayEnd },
+  }).select("scheduledAt serviceDuration bufferTime");
+
+  // Combine both bookings and temp bookings
+  const allBookings = [...bookings, ...tempBookings];
+
+  // Convert bookings to time ranges in minutes (including bufferTime from service)
+  const bookedRanges = allBookings.map((booking) => {
     const bookingStart = new Date(booking.scheduledAt);
     const bookingStartMinutes =
       bookingStart.getUTCHours() * 60 + bookingStart.getUTCMinutes();
+    const bookingBufferTime = service.bufferTime || 0; // Use service bufferTime instead of booking bufferTime
     const bookingEndMinutes =
-      bookingStartMinutes + booking.serviceDuration * 60;
+      bookingStartMinutes + booking.serviceDuration * 60 + bookingBufferTime;
     return { start: bookingStartMinutes, end: bookingEndMinutes };
   });
 
@@ -738,10 +895,9 @@ const getServiceProviderAvailableSlots = async (
   const slots = allSlots.map((slot) => {
     const slotStart = slot.minutes;
 
-    // Check if slot overlaps with any booking
-    // Using <= for end time to match booking conflict detection logic
+    // Check if slot overlaps with any booking (including buffer time)
     const isBooked = bookedRanges.some(
-      (range) => slotStart >= range.start && slotStart <= range.end
+      (range) => slotStart >= range.start && slotStart < range.end
     );
 
     return {
@@ -1034,18 +1190,25 @@ const searchAndFilterServices = async (queryParams: {
     }
 
     // Step 7: Transform and format the response
-    const transformedServices = services.map((service: any) => ({
-      _id: service._id,
-      serviceName: service.name,
-      serviceImage:
-        service.coverImages && service.coverImages.length > 0
-          ? service.coverImages[0]
-          : null,
-      averageRating: service.ratingsAverage || 0,
-      providerName: service.providerId?.userName || "Unknown Provider",
-      providerProfilePicture: service.providerId?.profilePicture || null,
-      rateByHour: service.rateByHour,
-    }));
+    const transformedServices = services.map((service: any) => {
+      const imagesMeta = service.coverImagesMeta || [];
+      const sortedImages =
+        imagesMeta.length > 0
+          ? imagesMeta.sort((a: any, b: any) => a.order - b.order)
+          : [];
+      const firstImage =
+        sortedImages[0]?.url || service.coverImages?.[0] || null;
+
+      return {
+        _id: service._id,
+        serviceName: service.name,
+        serviceImage: firstImage,
+        averageRating: service.ratingsAverage || 0,
+        providerName: service.providerId?.userName || "Unknown Provider",
+        providerProfilePicture: service.providerId?.profilePicture || null,
+        rateByHour: service.rateByHour,
+      };
+    });
 
     return {
       success: true,
@@ -1175,6 +1338,7 @@ export const serviceService = {
   getServiceById,
   updateService,
   deleteService,
+  deleteSinglePhoto,
   getServiceRatingAndReview,
   getServiceProviderSchedule,
   getServiceProviderAvailableSlots,

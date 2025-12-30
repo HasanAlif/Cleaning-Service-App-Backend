@@ -18,6 +18,7 @@ export interface ITempBooking extends Document {
   address: ITempAddress;
   description?: string;
   serviceDuration: number;
+  bufferTime: number;
   totalAmount: number;
   paymentMethod: PaymentMethod;
   stripeSessionId?: string;
@@ -76,6 +77,10 @@ const TempBookingSchema = new Schema<ITempBooking>(
       type: Number,
       required: true,
       min: 0.5,
+    },
+    bufferTime: {
+      type: Number,
+      default: 0,
     },
     totalAmount: {
       type: Number,

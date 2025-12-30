@@ -88,6 +88,11 @@ const createServiceSchema = z.object({
       return v;
     }, z.boolean().optional().default(false)),
 
+    bufferTime: z.preprocess((v) => {
+      if (typeof v === "string" && v.trim() !== "") return Number(v);
+      return v;
+    }, z.number().min(0).optional()),
+
     gender: z.enum(["Male", "Female"], {
       required_error: "Gender is required",
       invalid_type_error: "Gender must be either Male or Female",
@@ -142,6 +147,10 @@ const updateServiceSchema = z.object({
       if (v === "false" || v === false) return false;
       return v;
     }, z.boolean().optional()),
+    bufferTime: z.preprocess((v) => {
+      if (typeof v === "string" && v.trim() !== "") return Number(v);
+      return v;
+    }, z.number().min(0).optional()),
     gender: z.enum(["Male", "Female"]).optional(),
     languages: z.preprocess((v) => {
       if (Array.isArray(v)) return v;
@@ -198,6 +207,13 @@ const getAvailableSlotsSchema = z.object({
   }),
 });
 
+const deletePhotoSchema = z.object({
+  params: z.object({
+    serviceId: z.string().min(1, "Service ID is required"),
+    photoId: z.string().min(1, "Photo ID is required"),
+  }),
+});
+
 export const serviceValidation = {
   createServiceSchema,
   updateServiceSchema,
@@ -205,4 +221,5 @@ export const serviceValidation = {
   getServicesSchema,
   deleteServiceSchema,
   getAvailableSlotsSchema,
+  deletePhotoSchema,
 };

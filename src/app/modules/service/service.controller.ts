@@ -98,6 +98,18 @@ const deleteService = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const deleteSinglePhoto = catchAsync(async (req: Request, res: Response) => {
+  const { serviceId, photoId } = req.params;
+  await serviceService.deleteSinglePhoto(serviceId, photoId, req.user.id);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Photo deleted successfully",
+    data: null,
+  });
+});
+
 const getServicesUnderCategory = catchAsync(
   async (req: Request, res: Response) => {
     const { categoryId } = req.params;
@@ -224,6 +236,7 @@ export const serviceController = {
   getServiceById,
   updateService,
   deleteService,
+  deleteSinglePhoto,
   getServicesUnderCategory,
   getServiceOverview,
   getServiceProviderDetails,

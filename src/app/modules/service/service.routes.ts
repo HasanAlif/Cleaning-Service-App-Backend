@@ -69,6 +69,13 @@ router.delete(
   serviceController.deleteService
 );
 
+router.delete(
+  "/:serviceId/photos/:photoId",
+  auth(UserRole.PROVIDER),
+  validateRequest(serviceValidation.deletePhotoSchema),
+  serviceController.deleteSinglePhoto
+);
+
 router.get(
   "/category/services/:categoryId",
   auth(UserRole.OWNER),
