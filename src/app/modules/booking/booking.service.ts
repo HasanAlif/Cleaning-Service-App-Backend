@@ -313,7 +313,7 @@ const createBooking = async (
   if (conflictingTempBooking) {
     throw new ApiError(
       httpStatus.CONFLICT,
-      "Another user is currently completing payment for this time slot. Please try again in a few minutes or choose a different time."
+      "A payment is currently in progress for this time slot. You can try again in about 10 minutes if the payment isn't completed, or feel free to choose a different time slot."
     );
   }
 
