@@ -17,8 +17,12 @@ export default {
   },
   reset_pass_link: process.env.RESET_PASS_LINK,
   emailSender: {
-    email: process.env.EMAIL,
-    app_pass: process.env.APP_PASS,
+    host: process.env.MAIL_HOST,
+    port: process.env.MAIL_PORT,
+    secure: process.env.MAIL_SECURE,
+    user: process.env.MAIL_USER,
+    mail: process.env.MAIL_EMAIL,
+    pass: process.env.MAIL_APP_PASS,
   },
 
   stripe_key: process.env.STRIPE_SECRET_KEY,
@@ -27,8 +31,6 @@ export default {
   payment_success_url: process.env.PAYMENT_SUCCESS_URL,
   payment_cancel_url: process.env.PAYMENT_CANCEL_URL,
 
-  mail_user: process.env.EMAIL_USER,
-  mail_pass: process.env.EMAIL_PASS,
 
   site_name: process.env.WEBSITE_NAME,
   contact_mail: process.env.CONTACT_MAIL,

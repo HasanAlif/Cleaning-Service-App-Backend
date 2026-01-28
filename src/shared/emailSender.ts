@@ -1,30 +1,28 @@
-import nodemailer from "nodemailer";
+import nodemailer, { SendMailOptions, TransportOptions } from "nodemailer";
 import config from "../config";
-
+ 
 const emailSender = async (email: string, html: string, subject: string) => {
-  try {
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465, // 2525
-      secure: true,
-      auth: {
-        user: "alifalmehedihasan2@gmail.com",
-        pass: "bpfkazkhtzfqfank",
-      },
-    });
-
-    const info = await transporter.sendMail({
-      from: "alifalmehedihasan2@gmail.com",
-      to: email,
-      subject: subject,
-      html,
-    });
-
-    return info;
-  } catch (error) {
-    console.error("Email sending failed:", error);
-    throw error;
-  }
+  if (!config.emailSender.host) return;
+ 
+ 
+  const transporter = nodemailer.createTransport({
+    host: config.emailSender.host,
+    port: config.emailSender.port,
+    secure: config.emailSender.secure,
+    auth: {
+      user: config.emailSender.mail,
+      pass: config.emailSender.pass,
+    },
+  } as TransportOptions);
+ 
+  const mailOptions: SendMailOptions = {
+    from: config.emailSender.user,
+    to: email,
+    subject: subject,
+    html,
+  };
+ 
+  const info = await transporter.sendMail(mailOptions);
 };
-
+ 
 export default emailSender;
