@@ -13,16 +13,13 @@ const updateProviderProfile = z.object({
         .optional(),
       address: z
         .string()
-        .min(5, "Address must be at least 5 characters")
+        .min(2, "Address must be at least 2 characters")
         .optional(),
       aboutMe: z
         .string()
-        .min(10, "About me must be at least 10 characters")
+        .min(5, "About me must be at least 5 characters")
         .optional(),
-      experience: z
-        .string()
-        .min(3, "Experience must be at least 3 characters")
-        .optional(),
+      experience: z.string().min(1, "Experience is required").optional(),
     })
     .optional(), // Make the entire body optional to handle file-only uploads
 });
