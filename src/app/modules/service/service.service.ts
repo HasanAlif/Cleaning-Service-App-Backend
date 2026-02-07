@@ -1037,20 +1037,19 @@ const searchAndFilterServices = async (queryParams: {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Step 3: Filter by provider experience
+    // Step 3: Filter by provider experience (exact match for enum values: "0-1", "1-5", "+5")
     if (experience && experience.trim()) {
-      const experienceYears = parseInt(experience);
-      if (!isNaN(experienceYears)) {
+      const validExperiences = ["0-1", "1-5", "+5"];
+      const requestedExp = experience.trim();
+      
+      if (validExperiences.includes(requestedExp)) {
+        // Filter services where provider has exact matching experience
         services = services.filter((service: any) => {
           const provider = service.providerId;
           if (!provider || !provider.experience) return false;
 
-          // Extract years from experience string
-          const providerExpMatch = provider.experience.match(/(\d+)/);
-          if (!providerExpMatch) return false;
-
-          const providerYears = parseInt(providerExpMatch[1]);
-          return providerYears >= experienceYears;
+          // Exact match only
+          return provider.experience === requestedExp;
         });
       }
     }
