@@ -83,7 +83,7 @@ const ServiceSchema = new Schema<IService>(
     },
     needApproval: {
       type: Boolean,
-      default: false,
+      default: true,
     },
     bufferTime: {
       type: Number,

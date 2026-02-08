@@ -555,7 +555,25 @@ const confirmBookingAfterPayment = async (
       );
     }
 
-    // Step 3: Create permanent booking with same ID
+    // Step 3: Fetch service to check needApproval flag
+    const service = await Service.findById(tempBooking.serviceId)
+      .select("name needApproval")
+      .session(session);
+
+    if (!service) {
+      await session.abortTransaction();
+      throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
+    }
+
+    // Determine booking status:
+    // needApproval === false => instant booking (ONGOING)
+    // needApproval === true or undefined => requires provider approval (PENDING)
+    const bookingStatus =
+      service.needApproval === false
+        ? ("ONGOING" as const)
+        : ("PENDING" as const);
+
+    // Step 4: Create permanent booking with same ID
     const bookingData = {
       _id: bookingId,
       customerId: tempBooking.customerId,
@@ -568,7 +586,7 @@ const confirmBookingAfterPayment = async (
       serviceDuration: tempBooking.serviceDuration,
       bufferTime: (tempBooking as any).bufferTime || 0,
       totalAmount: tempBooking.totalAmount,
-      status: "PENDING" as const,
+      status: bookingStatus,
       payment: {
         method: tempBooking.paymentMethod,
         status: "PAID" as const,
@@ -583,20 +601,48 @@ const confirmBookingAfterPayment = async (
     await session.commitTransaction();
 
     // Step 5: Send notifications (after transaction commits)
-    const service = await Service.findById(createdBooking.serviceId);
-    if (!service) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Service not found");
-    }
+    const providerIdStr =
+      createdBooking.providerId?._id?.toString() ||
+      createdBooking.providerId?.toString();
+    const customerIdStr =
+      createdBooking.customerId?._id?.toString() ||
+      createdBooking.customerId?.toString();
 
-    // Notify provider about new booking request
-    if (createdBooking.providerId) {
-      const providerIdStr =
-        createdBooking.providerId?._id?.toString() ||
-        createdBooking.providerId?.toString();
-      const customerIdStr =
-        createdBooking.customerId?._id?.toString() ||
-        createdBooking.customerId?.toString();
-
+    if (bookingStatus === "ONGOING") {
+      // Instant booking — no provider approval needed
+      if (providerIdStr && customerIdStr) {
+        await notificationService.createNotification({
+          recipientId: providerIdStr,
+          senderId: customerIdStr,
+          type: NotificationType.BOOKING_ACCEPTED,
+          title: "New Booking Auto-Confirmed!",
+          message: `A new booking for ${service.name} has been automatically confirmed. Payment completed.`,
+          data: {
+            bookingId: createdBooking._id.toString(),
+            serviceId: service._id.toString(),
+            serviceName: service.name,
+            scheduledAt: createdBooking.scheduledAt,
+            totalAmount: createdBooking.totalAmount,
+          },
+        });
+      }
+      if (customerIdStr) {
+        await notificationService.createNotification({
+          recipientId: customerIdStr,
+          type: NotificationType.BOOKING_ACCEPTED,
+          title: "Booking Confirmed & Active!",
+          message: `Your booking for ${service.name} is confirmed and active. No provider approval needed.`,
+          data: {
+            bookingId: createdBooking._id.toString(),
+            serviceId: service._id.toString(),
+            serviceName: service.name,
+            scheduledAt: createdBooking.scheduledAt,
+            totalAmount: createdBooking.totalAmount,
+          },
+        });
+      }
+    } else {
+      // Standard booking — needs provider approval
       if (providerIdStr && customerIdStr) {
         await notificationService.createNotification({
           recipientId: providerIdStr,
@@ -613,26 +659,21 @@ const confirmBookingAfterPayment = async (
           },
         });
       }
-    }
-
-    // Notify customer that booking was confirmed
-    const customerNotifIdStr =
-      createdBooking.customerId?._id?.toString() ||
-      createdBooking.customerId?.toString();
-    if (customerNotifIdStr) {
-      await notificationService.createNotification({
-        recipientId: customerNotifIdStr,
-        type: NotificationType.BOOKING_CREATED,
-        title: "Booking Confirmed!",
-        message: `Your booking request for ${service.name} has been confirmed. Payment completed successfully.`,
-        data: {
-          bookingId: createdBooking._id.toString(),
-          serviceId: service._id.toString(),
-          serviceName: service.name,
-          scheduledAt: createdBooking.scheduledAt,
-          totalAmount: createdBooking.totalAmount,
-        },
-      });
+      if (customerIdStr) {
+        await notificationService.createNotification({
+          recipientId: customerIdStr,
+          type: NotificationType.BOOKING_CREATED,
+          title: "Booking Confirmed!",
+          message: `Your booking for ${service.name} has been confirmed. Payment completed. Waiting for provider approval.`,
+          data: {
+            bookingId: createdBooking._id.toString(),
+            serviceId: service._id.toString(),
+            serviceName: service.name,
+            scheduledAt: createdBooking.scheduledAt,
+            totalAmount: createdBooking.totalAmount,
+          },
+        });
+      }
     }
 
     // Check provider's booking limit and send notification if exceeded
@@ -1108,11 +1149,11 @@ const cancelBookingByOwner = async (bookingId: string, customerId: string) => {
     );
   }
 
-  // Block cancellation if provider has already accepted (ONGOING status)
+  // Block cancellation for ONGOING bookings (both manually accepted and auto-confirmed)
   if (booking.status === "ONGOING") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Cannot cancel: Provider has already accepted this booking. Please contact the provider directly.",
+      "Cannot cancel an ongoing booking. Please contact the provider or request a refund.",
     );
   }
 
