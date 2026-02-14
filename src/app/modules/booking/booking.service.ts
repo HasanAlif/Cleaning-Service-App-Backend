@@ -403,6 +403,47 @@ const createBooking = async (
   const successUrl = `${config.payment_success_url}`;
   const cancelUrl = `${config.payment_cancel_url}`;
 
+  // Validate provider has completed Stripe Connect onboarding
+  if (!provider.stripeAccountId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Provider has not completed Stripe Connect onboarding. Please contact the provider to complete their payment setup.",
+    );
+  }
+
+  // Verify the Stripe Connect account exists in current Stripe account
+  let isValidStripeAccount = false;
+  let providerAccountValid = false;
+
+  try {
+    const account = await stripe.accounts.retrieve(provider.stripeAccountId);
+    isValidStripeAccount = true;
+    providerAccountValid = account.charges_enabled && account.details_submitted;
+  } catch (error: any) {
+    // Provider account not found - will process payment without transfer
+  }
+
+  // Prepare payment intent data
+  const paymentIntentData: any = {
+    description: `Booking for ${service.name}`,
+    metadata: {
+      bookingId: bookingId.toString(),
+      customerId: customer._id.toString(),
+      serviceId: service._id.toString(),
+      providerId: provider._id.toString(),
+      providerStripeAccountId: provider.stripeAccountId,
+      type: "booking_payment",
+      transferEnabled: isValidStripeAccount.toString(),
+    },
+  };
+
+  // Only add transfer_data if provider account exists and is valid
+  if (isValidStripeAccount && providerAccountValid) {
+    paymentIntentData.transfer_data = {
+      destination: provider.stripeAccountId,
+    };
+  }
+
   const session = await stripe.checkout.sessions.create({
     customer: ownerStripeCustomerId,
     payment_method_types: ["card"],
@@ -429,24 +470,10 @@ const createBooking = async (
       customerId: customer._id.toString(),
       serviceId: service._id.toString(),
       providerId: provider._id.toString(),
-      providerStripeAccountId: provider.stripeAccountId,
+      providerStripeAccountId: provider.stripeAccountId || "",
       type: "booking_payment",
     },
-    payment_intent_data: {
-      description: `Booking for ${service.name}`,
-      metadata: {
-        bookingId: bookingId.toString(),
-        customerId: customer._id.toString(),
-        serviceId: service._id.toString(),
-        providerId: provider._id.toString(),
-        providerStripeAccountId: provider.stripeAccountId,
-        type: "booking_payment",
-      },
-      // Direct transfer to provider
-      transfer_data: {
-        destination: provider.stripeAccountId,
-      },
-    },
+    payment_intent_data: paymentIntentData,
   });
 
   // Step 12: Update temp booking with session ID
