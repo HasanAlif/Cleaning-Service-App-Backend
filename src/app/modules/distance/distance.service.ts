@@ -94,7 +94,7 @@ const distanceBetweenUsers = async (fromId: string, toId: string) => {
     if (!coordsA || !coordsB) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Coordinates missing for one or both users"
+        "Coordinates missing for one or both users",
       );
     }
 
@@ -103,7 +103,7 @@ const distanceBetweenUsers = async (fromId: string, toId: string) => {
       coordsA.lat,
       coordsA.lng,
       coordsB.lat,
-      coordsB.lng
+      coordsB.lng,
     );
 
     return {
@@ -127,7 +127,7 @@ const distanceBetweenUsers = async (fromId: string, toId: string) => {
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
       "Error calculating distance: " +
-        (error instanceof Error ? error.message : "Unknown error")
+        (error instanceof Error ? error.message : "Unknown error"),
     );
   }
 };
@@ -166,7 +166,7 @@ const findNearbyUsers = async (opts: {
     if (!currentCoords) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Your coordinates are missing. Please update your profile with a complete address."
+        "Your coordinates are missing. Please update your profile with a complete address.",
       );
     }
 
@@ -200,9 +200,17 @@ const findNearbyUsers = async (opts: {
 
     const providerIds = providersWithServices.map((p) => p._id);
 
-    // Filter providers who have services, excluding current user
+    // Get providers who have exceeded their booking limit
+    const { subscriptionService } =
+      await import("../subscription/subscription.service");
+    const limitExceededProviderIds =
+      await subscriptionService.getProvidersExceedingLimit();
+
+    // Filter providers who have services, excluding current user and limit-exceeded providers
     const filteredProviderIds = providerIds.filter(
-      (id) => id.toString() !== userId
+      (id) =>
+        id.toString() !== userId &&
+        !limitExceededProviderIds.includes(id.toString()),
     );
 
     // Add filter to only get providers who have services (excluding current user)
@@ -239,7 +247,7 @@ const findNearbyUsers = async (opts: {
         currentCoords.lat,
         currentCoords.lng,
         userCoords.lat,
-        userCoords.lng
+        userCoords.lng,
       );
 
       // Only include users within the specified radius
@@ -291,7 +299,7 @@ const findNearbyUsers = async (opts: {
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
       "Error finding nearby users: " +
-        (error instanceof Error ? error.message : "Unknown error")
+        (error instanceof Error ? error.message : "Unknown error"),
     );
   }
 };
