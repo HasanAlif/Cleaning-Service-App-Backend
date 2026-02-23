@@ -23,17 +23,17 @@ router.get("/categories", serviceController.getCategories);
 router.get(
   "/search-filter",
   auth(UserRole.OWNER),
-  serviceController.searchAndFilterServices
+  serviceController.searchAndFilterServices,
 );
 router.get(
   "/",
   validateRequest(serviceValidation.getServicesSchema),
-  serviceController.getAllServices
+  serviceController.getAllServices,
 );
 router.get(
   "/:id",
   validateRequest(serviceValidation.getServiceSchema),
-  serviceController.getServiceById
+  serviceController.getServiceById,
 );
 
 router.post(
@@ -44,14 +44,14 @@ router.post(
   checkCategoryLimit,
   serviceUpload,
   validateRequest(serviceValidation.createServiceSchema),
-  serviceController.createService
+  serviceController.createService,
 );
 
 router.get(
   "/my/services",
   auth(UserRole.PROVIDER),
   validateRequest(serviceValidation.getServicesSchema),
-  serviceController.getMyServices
+  serviceController.getMyServices,
 );
 
 router.put(
@@ -59,68 +59,68 @@ router.put(
   auth(UserRole.PROVIDER),
   serviceUpload,
   validateRequest(serviceValidation.updateServiceSchema),
-  serviceController.updateService
+  serviceController.updateService,
 );
 
 router.delete(
   "/:id",
   auth(UserRole.PROVIDER),
   validateRequest(serviceValidation.getServiceSchema),
-  serviceController.deleteService
+  serviceController.deleteService,
 );
 
 router.delete(
   "/:serviceId/photos/:photoId",
   auth(UserRole.PROVIDER),
   validateRequest(serviceValidation.deletePhotoSchema),
-  serviceController.deleteSinglePhoto
+  serviceController.deleteSinglePhoto,
 );
 
 router.get(
   "/category/services/:categoryId",
   auth(UserRole.OWNER),
-  serviceController.getServicesUnderCategory
+  serviceController.getServicesUnderCategory,
 );
 
 router.get(
   "/details/:id",
   auth(UserRole.OWNER),
   validateRequest(serviceValidation.getServiceSchema),
-  serviceController.getServiceOverview
+  serviceController.getServiceOverview,
 );
 
 router.get(
   "/provider/details/:id",
   auth(UserRole.OWNER),
   validateRequest(serviceValidation.getServiceSchema),
-  serviceController.getServiceProviderDetails
+  serviceController.getServiceProviderDetails,
 );
 
 router.get(
   "/provider/schedule/:id",
   auth(UserRole.OWNER),
   validateRequest(serviceValidation.getServiceSchema),
-  serviceController.getServiceProviderSchedule
+  serviceController.getServiceProviderSchedule,
 );
 
 router.get(
   "/provider/available-slots/:id",
   auth(UserRole.OWNER),
   validateRequest(serviceValidation.getAvailableSlotsSchema),
-  serviceController.getServiceProviderAvailableSlots
+  serviceController.getServiceProviderAvailableSlots,
 );
 
 router.get(
   "/ratings-reviews/:id",
-  auth(UserRole.OWNER),
+  auth(UserRole.OWNER, UserRole.PROVIDER),
   validateRequest(serviceValidation.getServiceSchema),
-  serviceController.getServiceRatingAndReview
+  serviceController.getServiceRatingAndReview,
 );
 
 router.get(
   "/provider/homepage-data",
   auth(UserRole.PROVIDER),
-  serviceController.getProviderHomepageContentData
+  serviceController.getProviderHomepageContentData,
 );
 
 export const serviceRoutes = router;
