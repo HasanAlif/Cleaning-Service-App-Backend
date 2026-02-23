@@ -1324,7 +1324,7 @@ const getProviderHomepageContentData = async (providerId: string) => {
         receiverId: new mongoose.Types.ObjectId(providerId),
         transactionType: TransactionType.BOOKING_PAYMENT,
         status: TransactionStatus.COMPLETED,
-        completedAt: {
+        createdAt: {
           $gte: startOfMonth,
           $lte: endOfMonth,
         },
