@@ -76,6 +76,48 @@ const getFeaturesList = (plan: SubscriptionPlan) => {
   return features;
 };
 
+// Calculate the start of the current monthly billing period based on subscription start date.
+// For a subscription starting on the 25th, billing periods are: 25th-24th of each month.
+// Handles months with fewer days (e.g., start on 31st → uses 28th/29th in Feb).
+const getCurrentBillingPeriodStart = (subscriptionStartDate: Date): Date => {
+  const now = new Date();
+  const billingDay = subscriptionStartDate.getDate();
+
+  let year = now.getFullYear();
+  let month = now.getMonth();
+
+  // Clamp billing day to last day of current month
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let day = Math.min(billingDay, daysInMonth);
+
+  let periodStart = new Date(year, month, day, 0, 0, 0, 0);
+
+  // If billing date hasn't arrived yet this month, use previous month
+  if (periodStart > now) {
+    month--;
+    if (month < 0) {
+      month = 11;
+      year--;
+    }
+    const daysInPrevMonth = new Date(year, month + 1, 0).getDate();
+    day = Math.min(billingDay, daysInPrevMonth);
+    periodStart = new Date(year, month, day, 0, 0, 0, 0);
+  }
+
+  // Never go before the subscription start date
+  const subStart = new Date(
+    subscriptionStartDate.getFullYear(),
+    subscriptionStartDate.getMonth(),
+    subscriptionStartDate.getDate(),
+    0, 0, 0, 0
+  );
+  if (periodStart < subStart) {
+    return subStart;
+  }
+
+  return periodStart;
+};
+
 // Check if user has reached their plan limits
 const checkPlanLimits = async (userId: string) => {
   const user = await User.findById(userId);
@@ -106,13 +148,13 @@ const checkPlanLimits = async (userId: string) => {
   const servicesCount = await Service.countDocuments({ providerId: userId });
 
   // Determine booking count period based on plan type:
-  // - PAID plans: count from subscription start date (30-day rolling period)
+  // - PAID plans: count from current billing period start (monthly cycle based on subscription date)
   // - FREE plans: count from calendar month start
   let bookingCountStartDate: Date;
 
   if (subscription && subscription.status === SubscriptionStatus.ACTIVE) {
-    // Paid plan: count bookings from subscription start date
-    bookingCountStartDate = new Date(subscription.startDate);
+    // Paid plan: count bookings from current billing period start
+    bookingCountStartDate = getCurrentBillingPeriodStart(subscription.startDate);
   } else {
     // Free plan: count bookings from calendar month start
     bookingCountStartDate = new Date();
@@ -984,11 +1026,13 @@ const handleStripeWebhook = async (
 //  Get list of provider IDs who have exceeded their booking limits. Uses real-time database query to ensure accuracy. Called by service queries to filter out limit-exceeded providers.
 
 const getProvidersExceedingLimit = async (): Promise<string[]> => {
+  const exceededProviderIds: string[] = [];
+
+  // --- FREE plan: count from calendar month start ---
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
-  // Get all FREE plan providers (no active subscription or plan is FREE)
   const freeProviders = await User.find({
     role: "PROVIDER",
     $or: [{ plan: "FREE" }, { plan: { $exists: false } }, { plan: null }],
@@ -996,17 +1040,47 @@ const getProvidersExceedingLimit = async (): Promise<string[]> => {
     .select("_id")
     .lean();
 
-  const exceededProviderIds: string[] = [];
-
-  // Check each FREE provider's booking count
   for (const provider of freeProviders) {
     const bookingCount = await Booking.countDocuments({
       providerId: provider._id,
       createdAt: { $gte: startOfMonth },
     });
 
-    // FREE plan limit is 2 bookings per month
     if (bookingCount >= PLAN_LIMITS.FREE.bookingsPerMonth) {
+      exceededProviderIds.push(provider._id.toString());
+    }
+  }
+
+  // --- SILVER plan: count from subscription billing period start ---
+  const silverProviders = await User.find({
+    role: "PROVIDER",
+    plan: "SILVER",
+  })
+    .select("_id")
+    .lean();
+
+  for (const provider of silverProviders) {
+    const subscription = await Subscription.findOne({
+      userId: provider._id,
+      status: SubscriptionStatus.ACTIVE,
+      plan: SubscriptionPlan.SILVER,
+    })
+      .sort({ createdAt: -1 })
+      .select("startDate")
+      .lean();
+
+    if (!subscription) continue;
+
+    const billingPeriodStart = getCurrentBillingPeriodStart(
+      subscription.startDate
+    );
+
+    const bookingCount = await Booking.countDocuments({
+      providerId: provider._id,
+      createdAt: { $gte: billingPeriodStart },
+    });
+
+    if (bookingCount >= PLAN_LIMITS.SILVER.bookingsPerMonth) {
       exceededProviderIds.push(provider._id.toString());
     }
   }
@@ -1023,6 +1097,13 @@ const checkAndNotifyProviderLimit = async (
 
   // If provider can still receive bookings, no action needed
   if (limits.canReceiveBooking) {
+    // Reset notification flag if a new billing period started (for SILVER plan)
+    if (limits.limits.bookingsPerMonth !== -1) {
+      await User.updateOne(
+        { _id: providerId, bookingLimitExceeded: true },
+        { bookingLimitExceeded: false }
+      );
+    }
     return false;
   }
 
@@ -1054,6 +1135,7 @@ const checkAndNotifyProviderLimit = async (
 
 // Reset booking limit exceeded flag for FREE plan providers.
 // Called by cron job on the 1st of each month.
+// SILVER plan resets are handled per billing cycle in checkAndNotifyProviderLimit().
 const resetMonthlyBookingLimits = async (): Promise<{ resetCount: number }> => {
   const result = await User.updateMany(
     {
