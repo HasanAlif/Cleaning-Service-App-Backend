@@ -603,31 +603,6 @@ export const WELCOME_COMPLETE_TEMPLATE = (
       margin-bottom: 30px;
       text-align: center;
     }
-    .features-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin: 30px 0;
-    }
-    .feature {
-      padding: 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border-radius: 15px;
-      text-align: center;
-      color: white;
-    }
-    .feature-icon {
-      font-size: 32px;
-      margin-bottom: 10px;
-    }
-    .feature h3 {
-      font-size: 16px;
-      margin-bottom: 5px;
-    }
-    .feature p {
-      font-size: 12px;
-      opacity: 0.9;
-    }
     .cta-button {
       display: block;
       width: 100%;
@@ -657,7 +632,6 @@ export const WELCOME_COMPLETE_TEMPLATE = (
       margin-bottom: 10px;
     }
     @media (max-width: 600px) {
-      .features-grid { grid-template-columns: 1fr; }
       .container { margin: 10px; }
       .header, .content, .footer { padding: 20px; }
     }
@@ -683,35 +657,12 @@ export const WELCOME_COMPLETE_TEMPLATE = (
         You're now part of the Brikky community - where cleanliness meets excellence!
       </div>
 
-      <div class="features-grid">
-        <div class="feature">
-          <div class="feature-icon">📅</div>
-          <h3>Easy Booking</h3>
-          <p>Schedule services with just a few clicks</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">⭐</div>
-          <h3>Quality Service</h3>
-          <p>Professional providers you can trust</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">💰</div>
-          <h3>Fair Pricing</h3>
-          <p>Transparent and competitive rates</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">🛡️</div>
-          <h3>Secure & Safe</h3>
-          <p>Your privacy and safety guaranteed</p>
-        </div>
-      </div>
-
       <a href="#" class="cta-button">
         🚀 Start Your Cleaning Journey
       </a>
 
       <div class="message">
-        Ready to experience premium cleaning services? Your sparkling clean space is just one booking away! ✨
+        Experience pristine spaces with a trusted partner. Happiness begins with cleanliness 💚🏠
       </div>
     </div>
 
