@@ -5,7 +5,7 @@ export const LANDING_PAGE_TEMPLATE = `
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="color-scheme" content="dark light" />
-  <title>Cleaning Service App 🧹 — Backend Server</title>
+  <title>Brikky 🧹 — Backend Server</title>
   <style>
     :root{
       --redA:#FF000080;
@@ -128,10 +128,10 @@ export const LANDING_PAGE_TEMPLATE = `
   <div class="page" style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; height:100%; width:100%; align-items:center;">
     <div class="wrap">
       <header>
-        <div class="badge" aria-hidden="true">CS</div>
+        <div class="badge" aria-hidden="true">B</div>
         <div class="brand">
-          <h1>Cleaning Service App 🧹</h1>
-          <small>Fast • Secure • Reliable</small>
+          <h1>Brikky 🧹</h1>
+          <small>Professional Cleaning Services</small>
         </div>
       </header>
     </div>
@@ -139,12 +139,12 @@ export const LANDING_PAGE_TEMPLATE = `
       <section class="frame" role="region" aria-label="Welcome">
         <div class="grid">
           <article class="card light">
-            <h2>Welcome to <span class="gtext">Cleaning Service App 🧹</span></h2>
-            <p class="lead">A simple, Server Start page for backend.</p>
+            <h2>Welcome to <span class="gtext">Brikky 🧹</span></h2>
+            <p class="lead">Professional Cleaning Services, Backend API</p>
           </article>
           <article class="card light">
-            <h2>This Is for <span class="gtext">Cleaning Service</span></h2>
-            <p class="lead">A simple, Cleaning Service App.</p>
+            <h2>Your Trusted <span class="gtext">Cleaning Partner</span></h2>
+            <p class="lead">Premium cleaning solutions for every space</p>
           </article>
           
           <article class="card dark">
@@ -163,14 +163,14 @@ export const LANDING_PAGE_TEMPLATE = `
 </html>
 `;
 
-// Email Templates for Cleaning Service App
+// Email Templates for Brikky
 export const EMAIL_VERIFICATION_TEMPLATE = (otp: string, userName: string) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Email Verification - Cleaning Service</title>
+  <title>Email Verification - Brikky</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -193,13 +193,27 @@ export const EMAIL_VERIFICATION_TEMPLATE = (otp: string, userName: string) => `
       text-align: center;
       color: white;
     }
+    .logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 20px;
+      overflow: hidden;
+      border: 3px solid rgba(255,255,255,0.3);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     .header h1 {
       font-size: 28px;
       font-weight: 700;
-      margin-bottom: 10px;
+      margin-bottom: 5px;
     }
     .header p {
-      font-size: 16px;
+      font-size: 14px;
       opacity: 0.9;
     }
     .content {
@@ -278,17 +292,6 @@ export const EMAIL_VERIFICATION_TEMPLATE = (otp: string, userName: string) => `
     .social-links a:hover {
       transform: translateY(-2px);
     }
-    .icon {
-      width: 60px;
-      height: 60px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 24px;
-    }
     @media (max-width: 600px) {
       .container { margin: 10px; }
       .header, .content, .footer { padding: 20px; }
@@ -299,46 +302,48 @@ export const EMAIL_VERIFICATION_TEMPLATE = (otp: string, userName: string) => `
 <body>
   <div class="container">
     <div class="header">
-      <div class="icon">🧹</div>
-      <h1>Cleaning Service</h1>
-      <p>provider Cleaning Solutions</p>
+      <div class="logo">
+        <img src="https://res.cloudinary.com/dxwwajxy8/image/upload/v1775988207/profile-pictures/1775988207060_3bx0fp9ynka_Screenshot_3.jpg" alt="Brikky Logo">
+      </div>
+      <h1>Brikky</h1>
+      <p>Verify Your Email Address</p>
     </div>
-    
+
     <div class="content">
       <div class="greeting">Hello ${userName}! 👋</div>
-      
+
       <div class="message">
-        Welcome to our Cleaning Service platform! We're excited to have you join our community of clean living enthusiasts.
+        Welcome to Brikky! We're excited to have you join our community of cleaning professionals and satisfied customers.
         <br><br>
         To complete your registration and verify your email address, please use the OTP code below:
       </div>
-      
+
       <div class="otp-container">
         <div class="otp-label">Your Verification Code</div>
         <div class="otp-code">${otp}</div>
       </div>
-      
+
       <div class="warning">
-        ⚠️ <strong>Important:</strong> This OTP will expire in 10 minutes for security purposes. 
+        ⚠️ <strong>Important:</strong> This OTP will expire in 10 minutes for security purposes.
         If you didn't request this verification, please ignore this email.
       </div>
-      
+
       <div class="message">
         Once verified, you'll be able to:
         <ul style="margin: 15px 0; padding-left: 20px; color: #666;">
-          <li>Book provider cleaning services</li>
-          <li>Manage your cleaning schedule</li>
+          <li>Book professional cleaning services</li>
+          <li>Manage your cleaning schedules with ease</li>
           <li>Connect with trusted cleaning providers</li>
-          <li>Access exclusive deals and offers</li>
+          <li>Access exclusive deals and special offers</li>
         </ul>
       </div>
     </div>
-    
+
     <div class="footer">
-      <p><strong>Cleaning Service Team</strong></p>
-      <p>Making your space sparkle, one clean at a time ✨</p>
+      <p><strong>Brikky Team</strong></p>
+      <p>Making every space sparkle and shine ✨</p>
       <p style="font-size: 12px; margin-top: 15px;">
-        If you have any questions, please contact our support team.
+        If you have any questions, please contact our support team at info@brikky.net
       </p>
       <div class="social-links">
         <a href="#">📧 Support</a>
@@ -357,7 +362,7 @@ export const PASSWORD_RESET_TEMPLATE = (otp: string, userName: string) => `
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Password Reset - Cleaning Service</title>
+  <title>Password Reset - Brikky</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -380,13 +385,27 @@ export const PASSWORD_RESET_TEMPLATE = (otp: string, userName: string) => `
       text-align: center;
       color: white;
     }
+    .logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 20px;
+      overflow: hidden;
+      border: 3px solid rgba(255,255,255,0.3);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     .header h1 {
       font-size: 28px;
       font-weight: 700;
-      margin-bottom: 10px;
+      margin-bottom: 5px;
     }
     .header p {
-      font-size: 16px;
+      font-size: 14px;
       opacity: 0.9;
     }
     .content {
@@ -448,17 +467,6 @@ export const PASSWORD_RESET_TEMPLATE = (otp: string, userName: string) => `
       font-size: 14px;
       margin-bottom: 10px;
     }
-    .icon {
-      width: 60px;
-      height: 60px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 24px;
-    }
     @media (max-width: 600px) {
       .container { margin: 10px; }
       .header, .content, .footer { padding: 20px; }
@@ -469,30 +477,32 @@ export const PASSWORD_RESET_TEMPLATE = (otp: string, userName: string) => `
 <body>
   <div class="container">
     <div class="header">
-      <div class="icon">🔐</div>
-      <h1>Password Reset</h1>
+      <div class="logo">
+        <img src="https://res.cloudinary.com/dxwwajxy8/image/upload/v1775988207/profile-pictures/1775988207060_3bx0fp9ynka_Screenshot_3.jpg" alt="Brikky Logo">
+      </div>
+      <h1>Brikky</h1>
       <p>Secure your account</p>
     </div>
-    
+
     <div class="content">
       <div class="greeting">Hello ${userName}! 🔑</div>
-      
+
       <div class="message">
-        We received a request to reset your password for your Cleaning Service account. 
+        We received a request to reset your password for your Brikky account.
         <br><br>
         Use the security code below to reset your password:
       </div>
-      
+
       <div class="otp-container">
         <div class="otp-label">Password Reset Code</div>
         <div class="otp-code">${otp}</div>
       </div>
-      
+
       <div class="security-notice">
-        🚨 <strong>Security Alert:</strong> This code will expire in 15 minutes. 
+        🚨 <strong>Security Alert:</strong> This code will expire in 15 minutes.
         If you didn't request this password reset, please ignore this email and contact our support team immediately.
       </div>
-      
+
       <div class="message">
         <strong>Next Steps:</strong>
         <ol style="margin: 15px 0; padding-left: 20px; color: #666;">
@@ -503,9 +513,9 @@ export const PASSWORD_RESET_TEMPLATE = (otp: string, userName: string) => `
         </ol>
       </div>
     </div>
-    
+
     <div class="footer">
-      <p><strong>Cleaning Service Security Team</strong></p>
+      <p><strong>Brikky Security Team</strong></p>
       <p>Keeping your account safe and secure 🛡️</p>
       <p style="font-size: 12px; margin-top: 15px;">
         This is an automated security email. Please do not reply to this message.
@@ -518,14 +528,14 @@ export const PASSWORD_RESET_TEMPLATE = (otp: string, userName: string) => `
 
 export const WELCOME_COMPLETE_TEMPLATE = (
   userName: string,
-  userRole: string
+  userRole: string,
 ) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Cleaning Service!</title>
+  <title>Welcome to Brikky!</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -548,10 +558,28 @@ export const WELCOME_COMPLETE_TEMPLATE = (
       text-align: center;
       color: white;
     }
+    .logo {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      margin: 0 auto 20px;
+      overflow: hidden;
+      border: 3px solid rgba(255,255,255,0.3);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     .header h1 {
       font-size: 32px;
       font-weight: 700;
-      margin-bottom: 10px;
+      margin-bottom: 5px;
+    }
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
     }
     .content {
       padding: 40px 30px;
@@ -623,16 +651,10 @@ export const WELCOME_COMPLETE_TEMPLATE = (
       text-align: center;
       border-top: 1px solid #e9ecef;
     }
-    .icon {
-      width: 80px;
-      height: 80px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 36px;
+    .footer p {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 10px;
     }
     @media (max-width: 600px) {
       .features-grid { grid-template-columns: 1fr; }
@@ -644,31 +666,33 @@ export const WELCOME_COMPLETE_TEMPLATE = (
 <body>
   <div class="container">
     <div class="header">
-      <div class="icon">🎉</div>
+      <div class="logo">
+        <img src="https://res.cloudinary.com/dxwwajxy8/image/upload/v1775988207/profile-pictures/1775988207060_3bx0fp9ynka_Screenshot_3.jpg" alt="Brikky Logo">
+      </div>
       <h1>Welcome Aboard!</h1>
-      <p>Your cleaning journey starts here</p>
+      <p>Your professional cleaning journey starts here</p>
     </div>
-    
+
     <div class="content">
       <div class="celebration">🌟✨🧹✨🌟</div>
-      
+
       <div class="greeting">Welcome ${userName}!</div>
-      
+
       <div class="message">
-        Congratulations! Your registration as a <strong>${userRole}</strong> has been completed successfully. 
-        You're now part of our amazing cleaning community!
+        Congratulations! Your registration as a <strong>${userRole}</strong> has been completed successfully.
+        You're now part of the Brikky community - where cleanliness meets excellence!
       </div>
-      
+
       <div class="features-grid">
         <div class="feature">
           <div class="feature-icon">📅</div>
           <h3>Easy Booking</h3>
-          <p>Schedule services with just a few taps</p>
+          <p>Schedule services with just a few clicks</p>
         </div>
         <div class="feature">
           <div class="feature-icon">⭐</div>
           <h3>Quality Service</h3>
-          <p>Trusted providers at your service</p>
+          <p>Professional providers you can trust</p>
         </div>
         <div class="feature">
           <div class="feature-icon">💰</div>
@@ -681,22 +705,21 @@ export const WELCOME_COMPLETE_TEMPLATE = (
           <p>Your privacy and safety guaranteed</p>
         </div>
       </div>
-      
+
       <a href="#" class="cta-button">
         🚀 Start Your Cleaning Journey
       </a>
-      
+
       <div class="message">
-        Ready to experience the cleanest service in town? 
-        Your sparkling clean space is just one booking away! ✨
+        Ready to experience premium cleaning services? Your sparkling clean space is just one booking away! ✨
       </div>
     </div>
-    
+
     <div class="footer">
-      <p><strong>The Cleaning Service Team</strong></p>
-      <p>Making your world sparkle, one space at a time! 🌟</p>
+      <p><strong>The Brikky Team</strong></p>
+      <p>Making every space sparkle and shine! 🌟</p>
       <p style="font-size: 12px; margin-top: 15px;">
-        Need help getting started? Our support team is here for you 24/7.
+        Need help getting started? Our support team is here for you 24/7 at info@brikky.net.
       </p>
     </div>
   </div>

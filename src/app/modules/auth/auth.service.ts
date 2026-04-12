@@ -73,7 +73,7 @@ const registerUser = async (userData: any) => {
       await emailSender(
         userData.email,
         emailTemplate,
-        "Verify Your Email - Cleaning Service 🧹",
+        "Verify Your Email - Brikky 🧹",
       );
     } catch (emailError) {
       console.error("Email sending error:", emailError);
@@ -332,7 +332,7 @@ const completeRegistration = async (registrationData: any, files: any) => {
       await emailSender(
         newUser.email,
         welcomeTemplate,
-        "Welcome to Cleaning Service! 🎉 Registration Complete",
+        "Welcome to Brikky! 🎉 Registration Complete",
       );
     } catch (emailError) {
       console.error("Welcome email sending error:", emailError);
@@ -507,7 +507,7 @@ const forgotPassword = async (payload: { email: string }) => {
     await emailSender(
       payload.email,
       resetTemplate,
-      "🔐 Password Reset Request - Cleaning Service",
+      "🔐 Password Reset Request - Brikky",
     );
   } catch (emailError) {
     console.error("Password reset email error:", emailError);
@@ -541,11 +541,7 @@ const resendOtp = async (email: string, otpType: string = "RESET_PASSWORD") => {
         otp,
         tempUser.userName || "User",
       );
-      await emailSender(
-        email,
-        emailTemplate,
-        "Verify Your Email - Cleaning Service 🧹",
-      );
+      await emailSender(email, emailTemplate, "Verify Your Email - Brikky 🧹");
     } catch (emailError) {
       console.error("Resend email verification OTP error:", emailError);
     }
@@ -577,11 +573,7 @@ const resendOtp = async (email: string, otpType: string = "RESET_PASSWORD") => {
       otp,
       userData.userName || "User",
     );
-    await emailSender(
-      email,
-      resetTemplate,
-      "🔐 Password Reset OTP - Cleaning Service",
-    );
+    await emailSender(email, resetTemplate, "🔐 Password Reset OTP - Brikky");
   } catch (emailError) {
     console.error("Resend password reset OTP error:", emailError);
   }

@@ -9,7 +9,7 @@ const getMyReferralInfo = async (userId: string) => {
   }
 
   const user = await User.findById(userId).select(
-    "referralCode credits userName role"
+    "referralCode credits userName role",
   );
 
   if (!user) {
@@ -26,7 +26,7 @@ const getMyReferralInfo = async (userId: string) => {
     myCredits: user.credits || 0,
     //totalReferrals: totalReferrals,
     //referredBy: user.referredBy || null,
-    shareMessage: `Join Cleaning Service using my referral code ${user.referralCode} and we both benefit! 🎉`,
+    shareMessage: `Join Brikky using my referral code ${user.referralCode} and we both benefit! 🎉`,
   };
 };
 
