@@ -64,7 +64,7 @@ const checkRefundEligibility = catchAsync(
       message: "Refund eligibility checked successfully",
       data: result,
     });
-  }
+  },
 );
 
 const handleWebhook = catchAsync(async (req: Request, res: Response) => {
@@ -81,7 +81,7 @@ const handleWebhook = catchAsync(async (req: Request, res: Response) => {
 
   const result = await paymentService.handleBookingPaymentWebhook(
     signature,
-    req.body
+    req.body,
   );
 
   sendResponse(res, {
@@ -103,14 +103,55 @@ const getBookingPaymentStatus = catchAsync(
       message: "Booking payment status retrieved successfully",
       data: result,
     });
-  }
+  },
+);
+
+const handleCheckoutRedirect = catchAsync(
+  async (req: Request, res: Response) => {
+    const { bookingId, status } = req.query;
+
+    if (!bookingId || typeof bookingId !== "string") {
+      return sendResponse(res, {
+        statusCode: httpStatus.BAD_REQUEST,
+        success: false,
+        message: "Booking ID is required",
+        data: null,
+      });
+    }
+
+    if (status !== "success" && status !== "cancel") {
+      return sendResponse(res, {
+        statusCode: httpStatus.BAD_REQUEST,
+        success: false,
+        message: "Invalid status",
+        data: null,
+      });
+    }
+
+    const paymentStatus =
+      await paymentService.getBookingPaymentStatus(bookingId);
+
+    return sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: status === "success",
+      message:
+        status === "success"
+          ? "Payment completed successfully"
+          : "Payment was cancelled",
+      data: {
+        bookingId,
+        redirectStatus: status,
+        paymentStatus: paymentStatus,
+      },
+    });
+  },
 );
 
 export const paymentController = {
   createBookingPayment,
-  // verifyBookingPayment,
   refundPayment,
   checkRefundEligibility,
   handleWebhook,
   getBookingPaymentStatus,
+  handleCheckoutRedirect,
 };

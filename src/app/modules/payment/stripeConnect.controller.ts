@@ -82,7 +82,7 @@ const handleOnboardingComplete = catchAsync(
         : "Stripe account status updated. Please complete any pending requirements.",
       data: result,
     });
-  }
+  },
 );
 
 // Handle Stripe Connect webhooks
@@ -92,7 +92,7 @@ const handleWebhook = catchAsync(async (req: Request, res: Response) => {
 
   const result = await stripeConnectService.handleConnectWebhook(
     signature,
-    rawBody
+    rawBody,
   );
 
   sendResponse(res, {
@@ -103,6 +103,44 @@ const handleWebhook = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * Handle Stripe redirect callbacks from onboarding flow
+ * Public endpoint - called by Stripe after user completes/refreshes onboarding
+ * Mobile app and web clients use this for status updates
+ */
+const handleRedirectCallback = catchAsync(
+  async (req: Request, res: Response) => {
+    const accountId = req.query.account_id as string;
+
+    if (!accountId) {
+      return sendResponse(res, {
+        statusCode: httpStatus.BAD_REQUEST,
+        success: false,
+        message: "Account ID (account_id) is required in query parameters",
+        data: null,
+      });
+    }
+
+    // Determine if this is complete or refresh callback from request path
+    const redirectType = req.path.includes("refresh") ? "refresh" : "complete";
+
+    const result = await stripeConnectService.handleStripeRedirect(
+      accountId,
+      redirectType,
+    );
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message:
+        redirectType === "complete"
+          ? "Stripe onboarding completed successfully"
+          : "Stripe onboarding refresh processed",
+      data: result,
+    });
+  },
+);
+
 export const stripeConnectController = {
   createOnboardingLink,
   getAccountStatus,
@@ -110,4 +148,5 @@ export const stripeConnectController = {
   disconnectAccount,
   handleOnboardingComplete,
   handleWebhook,
+  handleRedirectCallback,
 };

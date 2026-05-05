@@ -33,7 +33,7 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
   if (customerId !== ownerId) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "You can only pay for your own bookings"
+      "You can only pay for your own bookings",
     );
   }
 
@@ -44,7 +44,7 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
   if (booking.status === "CANCELLED") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Cannot pay for cancelled booking"
+      "Cannot pay for cancelled booking",
     );
   }
 
@@ -58,7 +58,7 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
   if (ownerStripeCustomerId) {
     try {
       const existingCustomer = await stripe.customers.retrieve(
-        ownerStripeCustomerId
+        ownerStripeCustomerId,
       );
 
       // Check if customer has USD subscriptions/invoices
@@ -70,7 +70,6 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
 
         // If customer has active USD items, create new EUR customer
         if (subscriptions.data.length > 0) {
-
           // Create new EUR-specific customer
           const newCustomer = await stripe.customers.create({
             email: owner.email,
@@ -122,7 +121,7 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
   if (!providerUser || !providerUser.stripeAccountId) {
     throw new ApiError(
       httpStatus.PAYMENT_REQUIRED,
-      "Provider has not connected their payment account. Cannot process payment."
+      "Provider has not connected their payment account. Cannot process payment.",
     );
   }
 
@@ -132,16 +131,29 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
   ) {
     throw new ApiError(
       httpStatus.PAYMENT_REQUIRED,
-      "Provider's payment account is not fully activated. Cannot process payment."
+      "Provider's payment account is not fully activated. Cannot process payment.",
     );
   }
 
   const providerStripeAccountId = providerUser.stripeAccountId;
 
-  // Get redirect URLs from config
-  // Use configured URLs with booking ID as query parameter for tracking
-  const successUrl = `${config.payment_success_url}`;
-  const cancelUrl = `${config.payment_cancel_url}`;
+  // Determine redirect URLs
+  // For mobile apps: use backend API endpoints (no frontend URLs)
+  // For web: use configured frontend URLs if available
+  let successUrl: string;
+  let cancelUrl: string;
+
+  if (config.payment_success_url && config.payment_cancel_url) {
+    // Web app: use configured frontend URLs
+    successUrl = `${config.payment_success_url}?bookingId=${booking._id.toString()}`;
+    cancelUrl = `${config.payment_cancel_url}?bookingId=${booking._id.toString()}`;
+  } else {
+    // Mobile app: use backend API endpoints
+    // Mobile app will poll the status endpoint to get payment result
+    const backendUrl = config.backend_url || "https://backend.brikky.net";
+    successUrl = `${backendUrl}/api/payment/checkout-redirect?bookingId=${booking._id.toString()}&status=success`;
+    cancelUrl = `${backendUrl}/api/payment/checkout-redirect?bookingId=${booking._id.toString()}&status=cancel`;
+  }
 
   // Create Checkout Session with direct charge to connected account
   // No platform fee - admin earns through subscription plans only
@@ -197,7 +209,7 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
 // Confirm booking payment after successful payment intent
 const confirmBookingPayment = async (
   bookingId: string,
-  paymentIntentId: string
+  paymentIntentId: string,
 ) => {
   const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
@@ -239,7 +251,7 @@ const confirmBookingPayment = async (
 
   // Get provider's Stripe Connect account
   const providerUser = await User.findById(booking.providerId).select(
-    "stripeAccountId stripeCustomerId"
+    "stripeAccountId stripeCustomerId",
   );
 
   // Record transaction
@@ -329,28 +341,28 @@ const refundBookingPayment = async (bookingId: string, ownerId: string) => {
   if (customerId !== ownerId) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "You can only refund your own bookings"
+      "You can only refund your own bookings",
     );
   }
 
   if (booking.payment.status === "REFUNDED") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Booking payment is already refunded"
+      "Booking payment is already refunded",
     );
   }
 
   if (booking.payment.status !== "PAID") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Booking payment is not paid yet"
+      "Booking payment is not paid yet",
     );
   }
 
   if (booking.status === "COMPLETED") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Cannot refund completed bookings"
+      "Cannot refund completed bookings",
     );
   }
 
@@ -358,26 +370,26 @@ const refundBookingPayment = async (bookingId: string, ownerId: string) => {
   if (!isRefundEligible(booking)) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Refund window has expired. Refunds are only available within ${REFUND_WINDOW_HOURS} hours of booking creation.`
+      `Refund window has expired. Refunds are only available within ${REFUND_WINDOW_HOURS} hours of booking creation.`,
     );
   }
 
   if (!booking.payment.stripePaymentIntentId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "No payment intent found for this booking"
+      "No payment intent found for this booking",
     );
   }
 
   // Get provider's Stripe Connect account ID
   const providerUser = await User.findById(booking.providerId).select(
-    "stripeAccountId"
+    "stripeAccountId",
   );
 
   if (!providerUser || !providerUser.stripeAccountId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Provider Stripe account not found. Cannot process refund."
+      "Provider Stripe account not found. Cannot process refund.",
     );
   }
 
@@ -480,7 +492,7 @@ const getRefundEligibility = async (bookingId: string, ownerId: string) => {
   if (customerId !== ownerId) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "You can only check your own bookings"
+      "You can only check your own bookings",
     );
   }
 
@@ -502,24 +514,24 @@ const getRefundEligibility = async (bookingId: string, ownerId: string) => {
     reason: !eligible
       ? `Refund window expired. Refunds only available within ${REFUND_WINDOW_HOURS} hours.`
       : booking.payment.status !== "PAID"
-      ? "Booking is not paid yet"
-      : booking.status === "COMPLETED"
-      ? "Cannot refund completed bookings"
-      : "Refund available",
+        ? "Booking is not paid yet"
+        : booking.status === "COMPLETED"
+          ? "Cannot refund completed bookings"
+          : "Refund available",
   };
 };
 
 // Handle Stripe webhooks for booking payments
 const handleBookingPaymentWebhook = async (
   signature: string,
-  rawBody: string | Buffer
+  rawBody: string | Buffer,
 ) => {
   const webhookSecret = config.stripe_webhook_secret;
 
   if (!webhookSecret) {
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Webhook secret not configured"
+      "Webhook secret not configured",
     );
   }
 
@@ -530,14 +542,13 @@ const handleBookingPaymentWebhook = async (
   } catch (error) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Webhook signature verification failed: ${(error as Error).message}`
+      `Webhook signature verification failed: ${(error as Error).message}`,
     );
   }
 
   // Validate event using centralized handler
-  const { handleBookingPaymentEvent } = await import(
-    "../../../helpers/handleStripeEvents"
-  );
+  const { handleBookingPaymentEvent } =
+    await import("../../../helpers/handleStripeEvents");
 
   if (!handleBookingPaymentEvent(event.type)) {
     return { received: true, eventType: event.type };
@@ -558,12 +569,11 @@ const handleBookingPaymentWebhook = async (
           // Create booking from temp booking with same ID
           if (bookingId) {
             try {
-              const { bookingService } = await import(
-                "../booking/booking.service"
-              );
+              const { bookingService } =
+                await import("../booking/booking.service");
               await bookingService.confirmBookingAfterPayment(
                 bookingId,
-                paymentIntentId
+                paymentIntentId,
               );
             } catch (error: any) {
               // Temp booking might have expired or already been processed
@@ -572,12 +582,11 @@ const handleBookingPaymentWebhook = async (
           // OLD FLOW: Backward compatibility for old temp bookings
           else if (tempBookingId) {
             try {
-              const { bookingService } = await import(
-                "../booking/booking.service"
-              );
+              const { bookingService } =
+                await import("../booking/booking.service");
               await bookingService.confirmBookingAfterPayment(
                 tempBookingId,
-                paymentIntentId
+                paymentIntentId,
               );
             } catch (error: any) {
               // Legacy booking processing error - non-blocking
@@ -598,12 +607,11 @@ const handleBookingPaymentWebhook = async (
         // Create booking from temp booking with same ID
         if (bookingId) {
           try {
-            const { bookingService } = await import(
-              "../booking/booking.service"
-            );
+            const { bookingService } =
+              await import("../booking/booking.service");
             await bookingService.confirmBookingAfterPayment(
               bookingId,
-              paymentIntent.id
+              paymentIntent.id,
             );
           } catch (error: any) {
             // Error confirming booking after payment - non-blocking
@@ -612,12 +620,11 @@ const handleBookingPaymentWebhook = async (
         // Backward compatibility for old temp bookings
         else if (tempBookingId) {
           try {
-            const { bookingService } = await import(
-              "../booking/booking.service"
-            );
+            const { bookingService } =
+              await import("../booking/booking.service");
             await bookingService.confirmBookingAfterPayment(
               tempBookingId,
-              paymentIntent.id
+              paymentIntent.id,
             );
           } catch (error: any) {
             // Legacy booking processing error - non-blocking
@@ -680,7 +687,7 @@ const getBookingPaymentStatus = async (bookingId: string) => {
 const refundBookingByStatus = async (
   bookingId: string,
   reason: string,
-  initiatedBy: "owner" | "provider"
+  initiatedBy: "owner" | "provider",
 ) => {
   const booking = await Booking.findById(bookingId)
     .populate("providerId", "userName stripeAccountId")
@@ -707,7 +714,7 @@ const refundBookingByStatus = async (
   if (booking.payment.status === "REFUNDED") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Payment has already been refunded"
+      "Payment has already been refunded",
     );
   }
 
@@ -719,7 +726,7 @@ const refundBookingByStatus = async (
   if (booking.status === "COMPLETED") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Cannot refund completed bookings"
+      "Cannot refund completed bookings",
     );
   }
 
@@ -730,7 +737,7 @@ const refundBookingByStatus = async (
   if (!booking.payment.stripePaymentIntentId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "No payment intent found for this booking"
+      "No payment intent found for this booking",
     );
   }
 
@@ -741,7 +748,7 @@ const refundBookingByStatus = async (
   if (!providerStripeAccountId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Provider Stripe account not found. Cannot process refund."
+      "Provider Stripe account not found. Cannot process refund.",
     );
   }
 

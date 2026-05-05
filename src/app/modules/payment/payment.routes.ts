@@ -12,27 +12,29 @@ router.post(
   "/booking/create",
   auth(UserRole.OWNER),
   validateRequest(paymentValidation.createBookingPaymentSchema),
-  paymentController.createBookingPayment
+  paymentController.createBookingPayment,
 );
 
 router.post(
   "/booking/refund",
   auth(UserRole.OWNER),
   validateRequest(paymentValidation.refundPaymentSchema),
-  paymentController.refundPayment
+  paymentController.refundPayment,
 );
 
 router.get(
   "/booking/refund-eligibility/:bookingId",
   auth(UserRole.OWNER),
-  paymentController.checkRefundEligibility
+  paymentController.checkRefundEligibility,
 );
 
 // Debug endpoint to check booking payment status
 router.get(
   "/booking/status",
   auth(UserRole.OWNER, UserRole.PROVIDER, UserRole.ADMIN),
-  paymentController.getBookingPaymentStatus
+  paymentController.getBookingPaymentStatus,
 );
+
+router.get("/checkout-redirect", paymentController.handleCheckoutRedirect);
 
 export const paymentRoutes = router;

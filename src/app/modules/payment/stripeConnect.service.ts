@@ -6,6 +6,38 @@ import { User } from "../../models/User.model";
 import { notificationService } from "../notification/notification.service";
 import { NotificationType } from "../../models";
 
+/**
+ * Validates that frontend URLs are HTTPS when using Stripe Live mode
+ * This prevents "Livemode requests must always be redirected via HTTPS" errors
+ */
+const validateStripeUrls = (): void => {
+  if (!config.is_stripe_live_mode) {
+    return; // Validation only needed for live mode
+  }
+
+  const urlsToValidate = [
+    { name: "FRONTEND_URL", value: config.frontend_url },
+    { name: "PAYMENT_SUCCESS_URL", value: config.payment_success_url },
+    { name: "PAYMENT_CANCEL_URL", value: config.payment_cancel_url },
+  ];
+
+  const invalidUrls = urlsToValidate.filter(
+    (url) => url.value && url.value.startsWith("http://"),
+  );
+
+  if (invalidUrls.length > 0) {
+    const urlList = invalidUrls.map((u) => `${u.name}: ${u.value}`).join("\n");
+    throw new Error(
+      `❌ STRIPE LIVE MODE - HTTP URLs Detected:\n${urlList}\n\n` +
+        "🔒 Stripe Live requires ALL URLs to use HTTPS.\n" +
+        "Please update your .env file and restart the server.",
+    );
+  }
+};
+
+// Validate URLs on module load
+validateStripeUrls();
+
 const stripe = new Stripe(config.stripe_key as string, {
   apiVersion: "2024-06-20",
 });
@@ -20,7 +52,7 @@ const createConnectAccount = async (userId: string) => {
   if (user.role !== "PROVIDER" && user.role !== "OWNER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers and owners can create Stripe Connect accounts"
+      "Only providers and owners can create Stripe Connect accounts",
     );
   }
 
@@ -28,7 +60,7 @@ const createConnectAccount = async (userId: string) => {
   if (user.stripeAccountId && user.stripeOnboardingComplete) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Stripe account already connected"
+      "Stripe account already connected",
     );
   }
 
@@ -60,7 +92,6 @@ const createConnectAccount = async (userId: string) => {
   };
 };
 
-// Create onboarding link for provider to complete Stripe Connect setup
 const createOnboardingLink = async (userId: string) => {
   const user = await User.findById(userId);
 
@@ -71,7 +102,7 @@ const createOnboardingLink = async (userId: string) => {
   if (user.role !== "PROVIDER" && user.role !== "OWNER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers and owners can access Stripe Connect onboarding"
+      "Only providers and owners can access Stripe Connect onboarding",
     );
   }
 
@@ -98,27 +129,53 @@ const createOnboardingLink = async (userId: string) => {
     }
   }
 
-  // Get frontend URL and ensure it has protocol
-  const frontendUrl = config.frontend_url;
-  const baseUrl = frontendUrl.startsWith("http")
-    ? frontendUrl
-    : `https://${frontendUrl}`;
+  // Get and validate backend URL (must be HTTPS for livemode)
+  const backendUrl = config.backend_url || "https://backend.brikky.net";
 
-  // Determine role-based paths (providers and owners use different frontend paths)
-  const rolePath = user.role === "PROVIDER" ? "provider" : "owner";
+  if (!backendUrl) {
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      "Backend URL is not configured. Please set BACKEND_URL in environment.",
+    );
+  }
 
-  // Create account link for onboarding
-  const accountLink = await stripe.accountLinks.create({
-    account: accountId,
-    refresh_url: `${baseUrl}/${rolePath}/stripe-connect/refresh`,
-    return_url: `${baseUrl}/${rolePath}/stripe-connect/complete`,
-    type: "account_onboarding",
-  });
+  if (config.is_stripe_live_mode && backendUrl.startsWith("http://")) {
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      "❌ Stripe Live Mode Error: Backend URL must use HTTPS. " +
+        "Update BACKEND_URL in your .env file and redeploy.",
+    );
+  }
 
-  return {
-    url: accountLink.url,
-    accountId,
-  };
+  try {
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${backendUrl}/api/stripe-connect/callback-refresh?account_id=${accountId}`,
+      return_url: `${backendUrl}/api/stripe-connect/callback-complete?account_id=${accountId}`,
+      type: "account_onboarding",
+    });
+
+    return {
+      url: accountLink.url,
+      accountId,
+    };
+  } catch (error: any) {
+    // Enhanced error handling for livemode issues
+    if (error.message?.includes("Livemode requests must")) {
+      throw new ApiError(
+        httpStatus.INTERNAL_SERVER_ERROR,
+        "❌ Stripe HTTPS Requirement Error:\n" +
+          "Your redirect URLs must use HTTPS when using Stripe Live mode.\n" +
+          "Current Backend URL: " +
+          backendUrl +
+          "\n" +
+          "Please update to use HTTPS and redeploy.",
+      );
+    }
+
+    // Re-throw other Stripe errors
+    throw error;
+  }
 };
 
 // Check if provider's Stripe account is fully set up
@@ -132,7 +189,7 @@ const checkAccountStatus = async (userId: string) => {
   if (user.role !== "PROVIDER" && user.role !== "OWNER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers and owners have Stripe Connect accounts"
+      "Only providers and owners have Stripe Connect accounts",
     );
   }
 
@@ -208,10 +265,12 @@ const checkAccountStatus = async (userId: string) => {
     let onboardingUrl = null;
     if (needsOnboarding && !isActive) {
       try {
-        const frontendUrl = config.frontend_url;
-        const baseUrl = frontendUrl.startsWith("http")
-          ? frontendUrl
-          : `https://${frontendUrl}`;
+        const baseUrl = config.frontend_url;
+
+        if (!baseUrl) {
+          throw new Error("Frontend URL not configured");
+        }
+
         const rolePath = user.role === "PROVIDER" ? "provider" : "owner";
 
         const accountLink = await stripe.accountLinks.create({
@@ -222,8 +281,12 @@ const checkAccountStatus = async (userId: string) => {
         });
 
         onboardingUrl = accountLink.url;
-      } catch (linkError) {
-        console.error("Failed to create onboarding link:", linkError);
+      } catch (linkError: any) {
+        console.error(
+          "Failed to create onboarding link:",
+          linkError?.message || linkError,
+        );
+        // Continue without onboarding URL - not fatal
       }
     }
 
@@ -277,14 +340,14 @@ const getDashboardLink = async (userId: string) => {
   if (!user.stripeAccountId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "No Stripe account connected. Please connect your account first."
+      "No Stripe account connected. Please connect your account first.",
     );
   }
 
   try {
     // Create login link for Express dashboard
     const loginLink = await stripe.accounts.createLoginLink(
-      user.stripeAccountId
+      user.stripeAccountId,
     );
 
     return {
@@ -304,7 +367,7 @@ const getDashboardLink = async (userId: string) => {
 
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Stripe account no longer exists. Please reconnect your account."
+        "Stripe account no longer exists. Please reconnect your account.",
       );
     }
 
@@ -326,7 +389,7 @@ const disconnectAccount = async (userId: string) => {
   if (!user.stripeAccountId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "No Stripe account to disconnect"
+      "No Stripe account to disconnect",
     );
   }
 
@@ -360,19 +423,20 @@ const disconnectAccount = async (userId: string) => {
   };
 };
 
-// Handle Stripe Connect webhooks
+/**
+ * Handle Stripe Connect webhooks
+ * These webhooks are critical for syncing account status changes
+ */
 const handleConnectWebhook = async (
   signature: string,
-  rawBody: string | Buffer
+  rawBody: string | Buffer,
 ) => {
-  const webhookSecret =
-    process.env.STRIPE_CONNECT_WEBHOOK_SECRET ||
-    process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = config.stripe_connect_webhook_secret;
 
   if (!webhookSecret) {
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Webhook secret not configured"
+      "Stripe Connect webhook secret not configured",
     );
   }
 
@@ -383,7 +447,7 @@ const handleConnectWebhook = async (
   } catch (error) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Webhook signature verification failed: ${(error as Error).message}`
+      `Webhook signature verification failed: ${(error as Error).message}`,
     );
   }
 
@@ -402,7 +466,7 @@ const handleConnectWebhook = async (
             stripeAccountStatus: isActive ? "active" : "pending",
             stripeOnboardingComplete: isActive,
           },
-          { new: true }
+          { new: true },
         );
 
         // Notify provider when account becomes active
@@ -418,8 +482,6 @@ const handleConnectWebhook = async (
             },
           });
         }
-      } else {
-        // No userId in metadata - skip
       }
       break;
     }
@@ -450,6 +512,131 @@ const handleConnectWebhook = async (
   return { received: true };
 };
 
+/**
+ * Handle Stripe redirect callback from onboarding flow
+ * Called by Stripe after user completes or refreshes onboarding
+ * Mobile app uses this endpoint to update status
+ */
+const handleStripeRedirect = async (
+  accountId: string,
+  redirectType: "complete" | "refresh",
+) => {
+  if (!accountId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Account ID is required in request parameters",
+    );
+  }
+
+  // Find user by Stripe account ID
+  const user = await User.findOne({ stripeAccountId: accountId });
+
+  if (!user) {
+    throw new ApiError(
+      httpStatus.NOT_FOUND,
+      "Stripe account not connected to any user in our system",
+    );
+  }
+
+  try {
+    // Retrieve fresh account status from Stripe
+    const account = await stripe.accounts.retrieve(accountId);
+
+    // Determine status exactly like checkAccountStatus does
+    const isActive = account.charges_enabled && account.payouts_enabled;
+    const detailsSubmitted = account.details_submitted || false;
+    const hasCurrentlyDue =
+      account.requirements?.currently_due &&
+      account.requirements.currently_due.length > 0;
+    const hasPastDue =
+      account.requirements?.past_due &&
+      account.requirements.past_due.length > 0;
+
+    let status: string;
+    let message: string;
+
+    if (isActive) {
+      status = "active";
+      message = "Your Stripe account is active and ready to receive payments";
+    } else if (hasPastDue) {
+      status = "requirements.past_due";
+      message =
+        "Your Stripe account setup is incomplete. Please complete the onboarding to receive payments.";
+    } else if (hasCurrentlyDue && !detailsSubmitted) {
+      status = "onboarding_incomplete";
+      message =
+        "Please complete your Stripe account onboarding to receive payments.";
+    } else if (hasCurrentlyDue && detailsSubmitted) {
+      status = "pending_verification";
+      message =
+        "Your Stripe account is under review. This usually takes 1-2 business days.";
+    } else if (account.requirements?.disabled_reason) {
+      status = account.requirements.disabled_reason;
+      message = `Account status: ${account.requirements.disabled_reason}. ${
+        account.requirements.disabled_reason.includes("requirements")
+          ? "Please complete the onboarding process."
+          : "Please contact support for assistance."
+      }`;
+    } else {
+      status = "pending";
+      message = "Please complete your Stripe account setup to receive payments";
+    }
+
+    // Update user in database
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      {
+        stripeAccountStatus: isActive ? "active" : "pending",
+        stripeOnboardingComplete: isActive,
+      },
+      { new: true },
+    );
+
+    // Send notification if status changed to active
+    if (isActive && !user.stripeOnboardingComplete) {
+      await notificationService.createNotification({
+        recipientId: user._id.toString(),
+        type: NotificationType.SYSTEM_ANNOUNCEMENT,
+        title: "Stripe Account Activated!",
+        message:
+          "Your Stripe account is now active and you can start receiving payments from bookings.",
+        data: {
+          accountId: accountId,
+          redirectType,
+        },
+      });
+    }
+
+    // Return response with all relevant information
+    return {
+      userId: user._id.toString(),
+      accountId: accountId,
+      status,
+      canReceivePayments: isActive,
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled,
+      detailsSubmitted,
+      requirements: account.requirements,
+      message,
+      redirectType,
+    };
+  } catch (error: any) {
+    // Handle specific Stripe errors
+    if (
+      error.code === "account_invalid" ||
+      error.type === "StripePermissionError"
+    ) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Stripe account is no longer accessible or has been deleted",
+      );
+    }
+
+    // Re-throw other errors
+    throw error;
+  }
+};
+
 export const stripeConnectService = {
   createConnectAccount,
   createOnboardingLink,
@@ -457,4 +644,5 @@ export const stripeConnectService = {
   getDashboardLink,
   disconnectAccount,
   handleConnectWebhook,
+  handleStripeRedirect,
 };
