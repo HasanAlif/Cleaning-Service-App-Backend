@@ -324,10 +324,37 @@ const updateLocationAndAddress = async (
   };
 };
 
+const addOrUpdateCountry = async (userId: string, country: string) => {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
+  }
+
+  const normalizedCountry = normalizeCountryCode(country);
+  if (!normalizedCountry) {
+    throw new ApiError(httpStatus.BAD_REQUEST, getCountryErrorMessage(country));
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { country: normalizedCountry },
+    { new: true, runValidators: true },
+  );
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  return {
+    _id: user._id,
+    country: user.country,
+  };
+};
+
 export const profileService = {
   providerProfileInformation,
   getProviderProfile,
   getOwnerProfile,
   ownerProfileInformation,
   updateLocationAndAddress,
+  addOrUpdateCountry,
 };

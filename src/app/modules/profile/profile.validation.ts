@@ -65,8 +65,20 @@ const updateLocationAndAddress = z.object({
   }),
 });
 
+const addOrUpdateCountry = z.object({
+  body: z.object({
+    country: z
+      .string({
+        required_error: "Country is required",
+      })
+      .min(1, "Country code is required")
+      .max(2, "Country code must be a valid 2-letter code"),
+  }),
+});
+
 export const profileValidation = {
   updateProviderProfile,
   updateOwnerProfile,
   updateLocationAndAddress,
+  addOrUpdateCountry,
 };

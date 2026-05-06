@@ -22,7 +22,7 @@ const updateProviderProfile = catchAsync(
     const result = await profileService.providerProfileInformation(
       userId,
       req.body,
-      req.file
+      req.file,
     );
 
     sendResponse(res, {
@@ -31,7 +31,7 @@ const updateProviderProfile = catchAsync(
       message: "Provider profile updated successfully",
       data: result,
     });
-  }
+  },
 );
 
 const getOwnerProfile = catchAsync(async (req: Request, res: Response) => {
@@ -51,7 +51,7 @@ const updateOwnerProfile = catchAsync(async (req: Request, res: Response) => {
   const result = await profileService.ownerProfileInformation(
     userId,
     req.body,
-    req.file
+    req.file,
   );
 
   sendResponse(res, {
@@ -71,7 +71,7 @@ const updateLocationAndAddress = catchAsync(
       userId,
       address,
       lattitude,
-      longitude
+      longitude,
     );
 
     sendResponse(res, {
@@ -80,8 +80,22 @@ const updateLocationAndAddress = catchAsync(
       message: "Location and address updated successfully",
       data: result,
     });
-  }
+  },
 );
+
+const addOrUpdateCountry = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user.id;
+  const { country } = req.body;
+
+  const result = await profileService.addOrUpdateCountry(userId, country);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Country updated successfully",
+    data: result,
+  });
+});
 
 export const profileController = {
   updateProviderProfile,
@@ -89,4 +103,5 @@ export const profileController = {
   getOwnerProfile,
   updateOwnerProfile,
   updateLocationAndAddress,
+  addOrUpdateCountry,
 };

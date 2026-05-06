@@ -16,7 +16,7 @@ const profileImageUpload = upload.single("profilePicture");
 router.get(
   "/provider",
   auth(UserRole.PROVIDER),
-  profileController.getProviderProfile
+  profileController.getProviderProfile,
 );
 
 router.put(
@@ -24,7 +24,7 @@ router.put(
   auth(UserRole.PROVIDER),
   profileImageUpload,
   validateRequest(profileValidation.updateProviderProfile),
-  profileController.updateProviderProfile
+  profileController.updateProviderProfile,
 );
 
 router.get("/owner", auth(UserRole.OWNER), profileController.getOwnerProfile);
@@ -34,14 +34,21 @@ router.put(
   auth(UserRole.OWNER),
   profileImageUpload,
   validateRequest(profileValidation.updateOwnerProfile),
-  profileController.updateOwnerProfile
+  profileController.updateOwnerProfile,
 );
 
 router.put(
   "/location",
   auth(),
   validateRequest(profileValidation.updateLocationAndAddress),
-  profileController.updateLocationAndAddress
+  profileController.updateLocationAndAddress,
+);
+
+router.put(
+  "/country",
+  auth(),
+  validateRequest(profileValidation.addOrUpdateCountry),
+  profileController.addOrUpdateCountry,
 );
 
 export const profileRoutes = router;
