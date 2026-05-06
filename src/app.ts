@@ -7,6 +7,7 @@ import GlobalErrorHandler from "./app/middlewares/globalErrorHandler";
 import router from "./app/routes";
 import { LANDING_PAGE_TEMPLATE } from "./utils/Template";
 import { webhookController } from "./app/controllers/webhook.controller";
+import { stripeConnectController } from "./app/modules/payment/stripeConnect.controller";
 
 const app: Application = express();
 export const corsOptions = {
@@ -30,11 +31,16 @@ export const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
-// CRITICAL: Webhook endpoint must be registered BEFORE express.json() middleware
 app.post(
   "/api/webhook/stripe",
   express.raw({ type: "application/json" }),
-  webhookController.handleWebhook
+  webhookController.handleWebhook,
+);
+
+app.post(
+  "/api/stripe-connect/webhook",
+  express.raw({ type: "application/json" }),
+  stripeConnectController.handleWebhook,
 );
 
 app.use(express.json({ limit: "50mb" }));

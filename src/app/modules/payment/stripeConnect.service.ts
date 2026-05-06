@@ -5,6 +5,11 @@ import config from "../../../config";
 import { User } from "../../models/User.model";
 import { notificationService } from "../notification/notification.service";
 import { NotificationType } from "../../models";
+import {
+  isValidStripeCountry,
+  normalizeCountryCode,
+  getCountryErrorMessage,
+} from "../../../app/utils/stripeCountries";
 
 /**
  * Validates that frontend URLs are HTTPS when using Stripe Live mode
@@ -64,10 +69,26 @@ const createConnectAccount = async (userId: string) => {
     );
   }
 
+  // Validate country is set and supported
+  if (!user.country) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Country is required. Please update your profile with your country before connecting a Stripe account. Supported countries: https://docs.stripe.com/global",
+    );
+  }
+
+  const normalizedCountry = normalizeCountryCode(user.country);
+  if (!normalizedCountry) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      getCountryErrorMessage(user.country),
+    );
+  }
+
   // Create Stripe Connect Express account
   const account = await stripe.accounts.create({
     type: "express",
-    country: "US", // Change based on your target country
+    country: normalizedCountry, // Use provider's country (dynamic, not hardcoded US)
     email: user.email,
     capabilities: {
       card_payments: { requested: true },

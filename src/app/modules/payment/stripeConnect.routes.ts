@@ -36,18 +36,16 @@ router.post(
   stripeConnectController.handleOnboardingComplete,
 );
 
-router.post(
+router.get(
   "/callback-complete",
   stripeCallbackRateLimiter,
   stripeConnectController.handleRedirectCallback,
 );
 
-router.post(
+router.get(
   "/callback-refresh",
   stripeCallbackRateLimiter,
   stripeConnectController.handleRedirectCallback,
 );
-
-router.post("/webhook", stripeConnectController.handleWebhook);
 
 export const stripeConnectRoutes = router;

@@ -3,6 +3,11 @@ import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { User } from "../../models/User.model";
 import { fileUploader } from "../../../helpers/fileUploader";
+import {
+  isValidStripeCountry,
+  normalizeCountryCode,
+  getCountryErrorMessage,
+} from "../../../app/utils/stripeCountries";
 
 interface IProviderProfileUpdate {
   userName?: string;
@@ -12,12 +17,14 @@ interface IProviderProfileUpdate {
   experience?: string;
   latitude?: number;
   longitude?: number;
+  country?: string; // Stripe Connect required country
 }
 
 interface IOwnerProfileUpdate {
   userName?: string;
   phoneNumber?: string;
   address?: string;
+  country?: string; // Stripe Connect required country (if owner has provider capabilities)
 }
 
 const getProviderProfile = async (userId: string) => {
@@ -25,7 +32,7 @@ const getProviderProfile = async (userId: string) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
   }
   const user = await User.findById(userId).select(
-    "profilePicture userName phoneNumber email address aboutMe experience role referralCode credits"
+    "profilePicture userName phoneNumber email address aboutMe experience role referralCode credits country",
   );
 
   if (!user) {
@@ -35,7 +42,7 @@ const getProviderProfile = async (userId: string) => {
   if (user.role !== "PROVIDER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers can access provider profile"
+      "Only providers can access provider profile",
     );
   }
 
@@ -50,13 +57,14 @@ const getProviderProfile = async (userId: string) => {
     experience: user.experience,
     referralCode: user.referralCode,
     credits: user.credits || 0,
+    country: user.country || null,
   };
 };
 
 const providerProfileInformation = async (
   userId: string,
   payload: IProviderProfileUpdate,
-  file?: Express.Multer.File
+  file?: Express.Multer.File,
 ) => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
@@ -67,7 +75,7 @@ const providerProfileInformation = async (
   if (!hasPayloadFields && !file) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "At least one field or profile image is required for update"
+      "At least one field or profile image is required for update",
     );
   }
 
@@ -79,8 +87,21 @@ const providerProfileInformation = async (
   if (user.role !== "PROVIDER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers can update provider profile"
+      "Only providers can update provider profile",
     );
+  }
+
+  // Validate country if provided
+  if (payload?.country) {
+    const normalizedCountry = normalizeCountryCode(payload.country);
+    if (!normalizedCountry) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        getCountryErrorMessage(payload.country),
+      );
+    }
+    // Update payload with normalized country code
+    payload.country = normalizedCountry;
   }
 
   let profileImageUrl = user.profilePicture || "";
@@ -90,7 +111,7 @@ const providerProfileInformation = async (
       // Upload new profile image first
       const result = await fileUploader.uploadToCloudinary(
         file,
-        "profile-pictures"
+        "profile-pictures",
       );
       profileImageUrl = result?.Location || "";
 
@@ -106,7 +127,7 @@ const providerProfileInformation = async (
       console.error("Profile image upload error:", error);
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
-        "Failed to upload profile image"
+        "Failed to upload profile image",
       );
     }
   }
@@ -123,7 +144,7 @@ const providerProfileInformation = async (
     new: true,
     runValidators: true,
     select:
-      "profilePicture userName phoneNumber email address aboutMe experience role",
+      "profilePicture userName phoneNumber email address aboutMe experience role country",
   });
 
   if (!updatedUser) {
@@ -139,6 +160,7 @@ const providerProfileInformation = async (
     address: updatedUser.address,
     aboutMe: updatedUser.aboutMe,
     experience: updatedUser.experience,
+    country: updatedUser.country || null,
   };
 };
 
@@ -147,7 +169,7 @@ const getOwnerProfile = async (userId: string) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
   }
   const user = await User.findById(userId).select(
-    "profilePicture userName phoneNumber address role referralCode credits"
+    "profilePicture userName phoneNumber address role referralCode credits country",
   );
 
   if (!user) {
@@ -157,7 +179,7 @@ const getOwnerProfile = async (userId: string) => {
   if (user.role !== "OWNER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only owners can access owner profile"
+      "Only owners can access owner profile",
     );
   }
 
@@ -169,13 +191,14 @@ const getOwnerProfile = async (userId: string) => {
     address: user.address,
     referralCode: user.referralCode,
     credits: user.credits || 0,
+    country: user.country || null,
   };
 };
 
 const ownerProfileInformation = async (
   userId: string,
   payload: IOwnerProfileUpdate,
-  file?: Express.Multer.File
+  file?: Express.Multer.File,
 ) => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
@@ -186,7 +209,7 @@ const ownerProfileInformation = async (
   if (!hasPayloadFields && !file) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "At least one field or profile image is required for update"
+      "At least one field or profile image is required for update",
     );
   }
 
@@ -198,8 +221,21 @@ const ownerProfileInformation = async (
   if (user.role !== "OWNER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only owners can update owner profile"
+      "Only owners can update owner profile",
     );
+  }
+
+  // Validate country if provided
+  if (payload?.country) {
+    const normalizedCountry = normalizeCountryCode(payload.country);
+    if (!normalizedCountry) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        getCountryErrorMessage(payload.country),
+      );
+    }
+    // Update payload with normalized country code
+    payload.country = normalizedCountry;
   }
 
   let profileImageUrl = user.profilePicture || "";
@@ -208,7 +244,7 @@ const ownerProfileInformation = async (
     try {
       const result = await fileUploader.uploadToCloudinary(
         file,
-        "profile-pictures"
+        "profile-pictures",
       );
       profileImageUrl = result?.Location || "";
 
@@ -223,7 +259,7 @@ const ownerProfileInformation = async (
       console.error("Profile image upload error:", error);
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
-        "Failed to upload profile image"
+        "Failed to upload profile image",
       );
     }
   }
@@ -239,7 +275,7 @@ const ownerProfileInformation = async (
   const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
     new: true,
     runValidators: true,
-    select: "profilePicture userName phoneNumber address role",
+    select: "profilePicture userName phoneNumber address role country",
   });
 
   if (!updatedUser) {
@@ -252,6 +288,7 @@ const ownerProfileInformation = async (
     userName: updatedUser.userName,
     phoneNumber: updatedUser.phoneNumber,
     address: updatedUser.address,
+    country: updatedUser.country || null,
   };
 };
 
@@ -259,7 +296,7 @@ const updateLocationAndAddress = async (
   userId: string,
   address: string,
   lattitude: number,
-  longitude: number
+  longitude: number,
 ) => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID");
@@ -272,7 +309,7 @@ const updateLocationAndAddress = async (
       lattitude,
       longitude,
     },
-    { new: true, runValidators: true }
+    { new: true, runValidators: true },
   );
 
   if (!user) {

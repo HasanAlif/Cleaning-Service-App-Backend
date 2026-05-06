@@ -49,6 +49,7 @@ export interface IUser extends Document {
   stripeAccountId?: string; // Stripe Connect account ID for providers (to receive payments)
   stripeAccountStatus?: "pending" | "active" | "restricted" | "none"; // Status of Stripe Connect account
   stripeOnboardingComplete?: boolean; // Whether provider completed Stripe onboarding
+  country?: string; // Provider's country for Stripe Connect (must be Stripe-supported)
   address?: string;
   aboutMe?: string;
   role?: UserRole;
@@ -192,6 +193,11 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
     },
+    country: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     address: {
       type: String,
       trim: true,
@@ -244,7 +250,7 @@ const UserSchema = new Schema<IUser>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Index for better performance

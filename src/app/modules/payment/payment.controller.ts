@@ -94,7 +94,7 @@ const handleWebhook = catchAsync(async (req: Request, res: Response) => {
 
 const getBookingPaymentStatus = catchAsync(
   async (req: Request, res: Response) => {
-    const bookingId = req.body.bookingId;
+    const bookingId = req.query.bookingId as string;
     const result = await paymentService.getBookingPaymentStatus(bookingId);
 
     sendResponse(res, {
