@@ -519,8 +519,10 @@ const createSubscriptionCheckout = async (
   ];
 
   // Get backend URL for activation callback
-  const backendUrl =
-    process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 8000}`;
+  const { getSubscriptionRedirectUrls } = await import("../../utils/stripeRedirects");
+
+  const { successUrl: subscriptionSuccess, cancelUrl: subscriptionCancel } =
+    getSubscriptionRedirectUrls();
 
   const session = await stripe.checkout.sessions.create({
     customer: stripeCustomerId,
@@ -529,10 +531,8 @@ const createSubscriptionCheckout = async (
     mode: "subscription",
     // CRITICAL: Redirect to BACKEND first to activate subscription, then redirect to frontend
     // This ensures subscription activates even if frontend is not connected
-    success_url: `${backendUrl}/api/subscription/activate-from-checkout?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${
-      process.env.FRONTEND_URL || "http://103.159.73.129:3000"
-    }/payment-cancel`,
+    success_url: subscriptionSuccess,
+    cancel_url: subscriptionCancel,
     metadata: {
       type: "subscription_payment", // CRITICAL: Identifies this as subscription payment for webhook routing
       userId: userId,

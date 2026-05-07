@@ -400,8 +400,12 @@ const createBooking = async (
   }
 
   // Step 11: Create Stripe Checkout Session
-  const successUrl = `${config.payment_success_url}`;
-  const cancelUrl = `${config.payment_cancel_url}`;
+  // Use centralized helper to ensure non-empty redirect URLs (supports mobile apps)
+  const { getBookingRedirectUrls } =
+    await import("../../utils/stripeRedirects");
+  const { successUrl, cancelUrl } = getBookingRedirectUrls({
+    bookingId: bookingId.toString(),
+  });
 
   const session = await stripe.checkout.sessions.create({
     customer: ownerStripeCustomerId,

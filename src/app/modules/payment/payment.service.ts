@@ -137,23 +137,12 @@ const createBookingPayment = async (bookingId: string, ownerId: string) => {
 
   const providerStripeAccountId = providerUser.stripeAccountId;
 
-  // Determine redirect URLs
-  // For mobile apps: use backend API endpoints (no frontend URLs)
-  // For web: use configured frontend URLs if available
-  let successUrl: string;
-  let cancelUrl: string;
-
-  if (config.payment_success_url && config.payment_cancel_url) {
-    // Web app: use configured frontend URLs
-    successUrl = `${config.payment_success_url}?bookingId=${booking._id.toString()}`;
-    cancelUrl = `${config.payment_cancel_url}?bookingId=${booking._id.toString()}`;
-  } else {
-    // Mobile app: use backend API endpoints
-    // Mobile app will poll the status endpoint to get payment result
-    const backendUrl = config.backend_url || "https://backend.brikky.net";
-    successUrl = `${backendUrl}/api/payment/checkout-redirect?bookingId=${booking._id.toString()}&status=success`;
-    cancelUrl = `${backendUrl}/api/payment/checkout-redirect?bookingId=${booking._id.toString()}&status=cancel`;
-  }
+  // Determine redirect URLs using centralized helper (ensures non-empty values)
+  const { getBookingRedirectUrls } =
+    await import("../../utils/stripeRedirects");
+  const { successUrl, cancelUrl } = getBookingRedirectUrls({
+    bookingId: booking._id.toString(),
+  });
 
   // Create Checkout Session with direct charge to connected account
   // No platform fee - admin earns through subscription plans only

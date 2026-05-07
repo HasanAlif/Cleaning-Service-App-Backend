@@ -128,8 +128,10 @@ const handleCheckoutRedirect = catchAsync(
       });
     }
 
-    const paymentStatus =
-      await paymentService.getBookingPaymentStatus(bookingId);
+    // Fetch payment status and return a JSON response for backend-driven clients.
+    const paymentStatus = await paymentService.getBookingPaymentStatus(
+      bookingId as string,
+    );
 
     return sendResponse(res, {
       statusCode: httpStatus.OK,
