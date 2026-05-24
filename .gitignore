@@ -1,11 +1,8 @@
 node_modules
 dist
-.env
-.env.*
 !.env.example
 socket-test.html
 
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -21,3 +18,8 @@ yarn-error.log*
 coverage/
 .nyc_output/
 *.tsbuildinfo
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
+config.bat
