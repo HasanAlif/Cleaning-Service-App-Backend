@@ -53,7 +53,7 @@ const getFeaturesList = (plan: SubscriptionPlan) => {
     features.push("Unlimited booking requests per month");
   } else {
     features.push(
-      `Receive up to ${limits.bookingsPerMonth} booking requests per month`
+      `Receive up to ${limits.bookingsPerMonth} booking requests per month`,
     );
   }
 
@@ -109,7 +109,10 @@ const getCurrentBillingPeriodStart = (subscriptionStartDate: Date): Date => {
     subscriptionStartDate.getFullYear(),
     subscriptionStartDate.getMonth(),
     subscriptionStartDate.getDate(),
-    0, 0, 0, 0
+    0,
+    0,
+    0,
+    0,
   );
   if (periodStart < subStart) {
     return subStart;
@@ -128,7 +131,7 @@ const checkPlanLimits = async (userId: string) => {
   if (user.role !== "PROVIDER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers have subscription plans"
+      "Only providers have subscription plans",
     );
   }
 
@@ -154,7 +157,9 @@ const checkPlanLimits = async (userId: string) => {
 
   if (subscription && subscription.status === SubscriptionStatus.ACTIVE) {
     // Paid plan: count bookings from current billing period start
-    bookingCountStartDate = getCurrentBillingPeriodStart(subscription.startDate);
+    bookingCountStartDate = getCurrentBillingPeriodStart(
+      subscription.startDate,
+    );
   } else {
     // Free plan: count bookings from calendar month start
     bookingCountStartDate = new Date();
@@ -169,7 +174,7 @@ const checkPlanLimits = async (userId: string) => {
 
   // Count unique categories
   const services = await Service.find({ providerId: userId }).select(
-    "categoryId"
+    "categoryId",
   );
   const uniqueCategories = new Set(services.map((s) => s.categoryId.toString()))
     .size;
@@ -205,9 +210,8 @@ const createStripeCustomer = async (userId: string) => {
   // Check if customer exists and has currency conflicts
   if (stripeCustomerId) {
     try {
-      const existingCustomer = await stripe.customers.retrieve(
-        stripeCustomerId
-      );
+      const existingCustomer =
+        await stripe.customers.retrieve(stripeCustomerId);
 
       // Check if customer has USD subscriptions/invoices
       if (existingCustomer && !existingCustomer.deleted) {
@@ -218,7 +222,6 @@ const createStripeCustomer = async (userId: string) => {
 
         // If customer has active USD items, create new EUR customer
         if (subscriptions.data.length > 0) {
-
           // Create new EUR-specific customer
           const newCustomer = await stripe.customers.create({
             email: user.email,
@@ -280,12 +283,12 @@ const createSubscriptionCheckout = async (
   userId: string,
   plan: SubscriptionPlan,
   timeline: "MONTHLY" | "YEARLY" = "MONTHLY",
-  creditsToRedeem?: number
+  creditsToRedeem?: number,
 ) => {
   if (plan === SubscriptionPlan.FREE) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "FREE plan does not require payment"
+      "FREE plan does not require payment",
     );
   }
 
@@ -293,7 +296,7 @@ const createSubscriptionCheckout = async (
   if (timeline !== "MONTHLY" && timeline !== "YEARLY") {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Invalid timeline. Must be either MONTHLY or YEARLY"
+      "Invalid timeline. Must be either MONTHLY or YEARLY",
     );
   }
 
@@ -305,7 +308,7 @@ const createSubscriptionCheckout = async (
   if (user.role !== "PROVIDER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers can purchase subscription plans"
+      "Only providers can purchase subscription plans",
     );
   }
 
@@ -319,7 +322,7 @@ const createSubscriptionCheckout = async (
   if (existingSubscription && existingSubscription.endDate > new Date()) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "You already have an active subscription to this plan"
+      "You already have an active subscription to this plan",
     );
   }
 
@@ -355,9 +358,8 @@ const createSubscriptionCheckout = async (
 
   // Handle credit redemption if requested
   if (creditsToRedeem && creditsToRedeem > 0) {
-    const { redemptionService } = await import(
-      "../redemption/redemption.service"
-    );
+    const { redemptionService } =
+      await import("../redemption/redemption.service");
 
     // This will throw an error if user doesn't have enough credits
     // The error will be caught by the catchAsync wrapper and sent to client
@@ -365,7 +367,7 @@ const createSubscriptionCheckout = async (
       await redemptionService.redeemCreditsForSubscription(
         userId,
         creditsToRedeem,
-        amountAfterYearlyDiscount // Use price after yearly discount for credit calculation
+        amountAfterYearlyDiscount, // Use price after yearly discount for credit calculation
       );
 
     redemptionId = redemptionResult.redemptionId;
@@ -400,12 +402,11 @@ const createSubscriptionCheckout = async (
 
     // Complete redemption
     if (redemptionId) {
-      const { redemptionService } = await import(
-        "../redemption/redemption.service"
-      );
+      const { redemptionService } =
+        await import("../redemption/redemption.service");
       await redemptionService.completeSubscriptionRedemption(
         redemptionId,
-        subscription._id.toString()
+        subscription._id.toString(),
       );
     }
 
@@ -487,7 +488,7 @@ const createSubscriptionCheckout = async (
 
   if (timeline === "YEARLY") {
     description += ` (20% yearly discount: €${yearlyDiscount.toFixed(
-      2
+      2,
     )} saved)`;
   }
 
@@ -519,7 +520,8 @@ const createSubscriptionCheckout = async (
   ];
 
   // Get backend URL for activation callback
-  const { getSubscriptionRedirectUrls } = await import("../../utils/stripeRedirects");
+  const { getSubscriptionRedirectUrls } =
+    await import("../../utils/stripeRedirects");
 
   const { successUrl: subscriptionSuccess, cancelUrl: subscriptionCancel } =
     getSubscriptionRedirectUrls();
@@ -575,11 +577,11 @@ const verifyAndActivateSubscription = async (sessionId: string) => {
 
   if (!session || session.payment_status !== "paid") {
     console.error(
-      `Payment not completed for session ${sessionId}. Status: ${session.payment_status}`
+      `Payment not completed for session ${sessionId}. Status: ${session.payment_status}`,
     );
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Payment not completed or session invalid"
+      "Payment not completed or session invalid",
     );
   }
 
@@ -626,7 +628,7 @@ const verifyAndActivateSubscription = async (sessionId: string) => {
       status: SubscriptionStatus.CANCELLED,
       cancelledAt: new Date(),
       cancellationReason: "Upgraded to new plan",
-    }
+    },
   );
 
   // Create new subscription
@@ -664,17 +666,16 @@ const verifyAndActivateSubscription = async (sessionId: string) => {
   const redemptionId = session.metadata?.redemptionId;
   if (redemptionId) {
     try {
-      const { redemptionService } = await import(
-        "../redemption/redemption.service"
-      );
+      const { redemptionService } =
+        await import("../redemption/redemption.service");
       await redemptionService.completeSubscriptionRedemption(
         redemptionId,
-        subscription._id.toString()
+        subscription._id.toString(),
       );
     } catch (error: any) {
       console.error(
         `CRITICAL: Failed to complete redemption ${redemptionId}:`,
-        error
+        error,
       );
       console.error("MANUAL REVIEW REQUIRED - Redemption completion failed:", {
         error: error.message,
@@ -698,14 +699,14 @@ const verifyAndActivateSubscription = async (sessionId: string) => {
       badge: PLAN_LIMITS[plan].badge,
       bookingLimitExceeded: false, // Reset limit status on plan upgrade
     },
-    { new: true } // Return updated document
+    { new: true }, // Return updated document
   );
 
   if (!updatedUser) {
     console.error(`Failed to update user plan for user: ${userId}`);
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Failed to update user plan"
+      "Failed to update user plan",
     );
   }
 
@@ -763,11 +764,11 @@ const verifyAndActivateSubscription = async (sessionId: string) => {
     }
     if (creditsDiscountApplied > 0) {
       discountParts.push(
-        `€${creditsDiscountApplied.toFixed(2)} credits discount`
+        `€${creditsDiscountApplied.toFixed(2)} credits discount`,
       );
     }
     message += ` You saved ${discountParts.join(
-      " + "
+      " + ",
     )} = €${totalDiscount.toFixed(2)} total!`;
   }
 
@@ -805,7 +806,7 @@ const getMySubscription = async (userId: string) => {
   if (user.role !== "PROVIDER") {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "Only providers have subscriptions"
+      "Only providers have subscriptions",
     );
   }
 
@@ -828,7 +829,7 @@ const getMySubscription = async (userId: string) => {
     canAddCategory: limits.canAddCategory,
     daysRemaining: subscription
       ? Math.ceil(
-          (subscription.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          (subscription.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
         )
       : 0,
   };
@@ -847,6 +848,35 @@ const cancelSubscription = async (userId: string, reason?: string) => {
 
   if (subscription.plan === SubscriptionPlan.FREE) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Cannot cancel FREE plan");
+  }
+
+  // RevenueCat (mobile IAP) subscriptions are cancelled by the user in the App Store /
+  // Google Play, NOT from the backend. Return the store management URL + guidance and do
+  // not mutate local state — the store webhook remains the source of truth for autoRenew.
+  if (subscription.provider === "revenuecat") {
+    let managementUrl: string | null = null;
+    try {
+      const { revenuecatService } =
+        await import("../revenuecat/revenuecat.service");
+      managementUrl = await revenuecatService.getManagementUrl(userId);
+    } catch (error) {
+      console.error(
+        "[Subscription] Failed to fetch RevenueCat management URL:",
+        error,
+      );
+    }
+
+    return {
+      isIAP: true,
+      provider: "revenuecat",
+      plan: subscription.plan,
+      managementUrl,
+      autoRenew: subscription.autoRenew,
+      endDate: subscription.endDate,
+      message:
+        "This subscription was purchased through the mobile app. To cancel or manage it, open your subscription settings in the App Store or Google Play" +
+        (managementUrl ? " using the provided link." : "."),
+    };
   }
 
   // Cancel Stripe subscription at period end
@@ -919,7 +949,7 @@ const downgradeExpiredSubscriptions = async () => {
     } catch (error) {
       console.error(
         `Error downgrading subscription for user ${subscription.userId}:`,
-        error
+        error,
       );
       results.push({
         userId: subscription.userId,
@@ -938,14 +968,14 @@ const downgradeExpiredSubscriptions = async () => {
 // Handle Stripe webhooks
 const handleStripeWebhook = async (
   signature: string,
-  rawBody: string | Buffer
+  rawBody: string | Buffer,
 ) => {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Webhook secret not configured"
+      "Webhook secret not configured",
     );
   }
 
@@ -956,13 +986,12 @@ const handleStripeWebhook = async (
   } catch (error) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Webhook signature verification failed: ${(error as Error).message}`
+      `Webhook signature verification failed: ${(error as Error).message}`,
     );
   }
 
-  const { handleSubscriptionEvent } = await import(
-    "../../../helpers/handleStripeEvents"
-  );
+  const { handleSubscriptionEvent } =
+    await import("../../../helpers/handleStripeEvents");
 
   if (!handleSubscriptionEvent(event.type)) {
     return { received: true, eventType: event.type };
@@ -987,7 +1016,7 @@ const handleStripeWebhook = async (
               ? SubscriptionStatus.ACTIVE
               : SubscriptionStatus.CANCELLED,
         },
-        { new: true }
+        { new: true },
       );
       break;
     }
@@ -1072,7 +1101,7 @@ const getProvidersExceedingLimit = async (): Promise<string[]> => {
     if (!subscription) continue;
 
     const billingPeriodStart = getCurrentBillingPeriodStart(
-      subscription.startDate
+      subscription.startDate,
     );
 
     const bookingCount = await Booking.countDocuments({
@@ -1091,7 +1120,7 @@ const getProvidersExceedingLimit = async (): Promise<string[]> => {
 // Check if a specific provider has exceeded their booking limit. Sends notification if limit just exceeded (first time).
 
 const checkAndNotifyProviderLimit = async (
-  providerId: string
+  providerId: string,
 ): Promise<boolean> => {
   const limits = await checkPlanLimits(providerId);
 
@@ -1101,7 +1130,7 @@ const checkAndNotifyProviderLimit = async (
     if (limits.limits.bookingsPerMonth !== -1) {
       await User.updateOne(
         { _id: providerId, bookingLimitExceeded: true },
-        { bookingLimitExceeded: false }
+        { bookingLimitExceeded: false },
       );
     }
     return false;
@@ -1143,7 +1172,7 @@ const resetMonthlyBookingLimits = async (): Promise<{ resetCount: number }> => {
       bookingLimitExceeded: true,
       $or: [{ plan: "FREE" }, { plan: { $exists: false } }, { plan: null }],
     },
-    { bookingLimitExceeded: false }
+    { bookingLimitExceeded: false },
   );
 
   return { resetCount: result.modifiedCount };

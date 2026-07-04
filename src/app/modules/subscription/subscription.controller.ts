@@ -48,7 +48,7 @@ const createCheckout = catchAsync(async (req: Request, res: Response) => {
     userId,
     plan,
     timeline || "MONTHLY",
-    creditsToRedeemFinal
+    creditsToRedeemFinal,
   );
 
   sendResponse(res, {
@@ -71,9 +71,8 @@ const verifySubscription = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
-  const result = await subscriptionService.verifyAndActivateSubscription(
-    sessionId
-  );
+  const result =
+    await subscriptionService.verifyAndActivateSubscription(sessionId);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -94,9 +93,8 @@ const activateFromCheckout = catchAsync(async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await subscriptionService.verifyAndActivateSubscription(
-      session_id
-    );
+    const result =
+      await subscriptionService.verifyAndActivateSubscription(session_id);
 
     // Redirect to frontend success page with subscription details
     const frontendUrl =
@@ -113,7 +111,7 @@ const activateFromCheckout = catchAsync(async (req: Request, res: Response) => {
       `${frontendUrl}/payment-cancel?` +
         `type=subscription&` +
         `error=${encodeURIComponent(errorMessage)}&` +
-        `session_id=${session_id}`
+        `session_id=${session_id}`,
     );
   }
 });
@@ -139,7 +137,7 @@ const cancelSubscription = catchAsync(async (req: Request, res: Response) => {
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: "Subscription cancelled successfully",
+    message: (result as any)?.message || "Subscription cancelled successfully",
     data: result,
   });
 });
@@ -158,7 +156,7 @@ const handleWebhook = catchAsync(async (req: Request, res: Response) => {
 
   const result = await subscriptionService.handleStripeWebhook(
     signature,
-    req.body
+    req.body,
   );
 
   sendResponse(res, {

@@ -13,6 +13,7 @@ import { paymentRoutes } from "../modules/payment/payment.routes";
 import { stripeConnectRoutes } from "../modules/payment/stripeConnect.routes";
 import { redemptionRoutes } from "../modules/redemption/redemption.routes";
 import { transactionRoutes } from "../modules/transaction/transaction.routes";
+import { revenuecatRoutes } from "../modules/revenuecat/revenuecat.routes";
 
 const router = express.Router();
 
@@ -72,6 +73,10 @@ const moduleRoutes = [
   {
     path: "/transactions",
     route: transactionRoutes,
+  },
+  {
+    path: "/revenuecat",
+    route: revenuecatRoutes,
   },
 ];
 

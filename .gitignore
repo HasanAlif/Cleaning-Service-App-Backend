@@ -4,6 +4,7 @@ dist
 .env.*
 !.env.example
 socket-test.html
+CLAUDE.md
 
 .idea/
 *.swp

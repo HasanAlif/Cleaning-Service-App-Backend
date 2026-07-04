@@ -107,4 +107,10 @@ export default {
 
   site_name: process.env.WEBSITE_NAME,
   contact_mail: process.env.CONTACT_MAIL,
+
+  revenuecat: {
+    api_key: process.env.REVENUECAT_API_KEY,
+    webhook_auth: process.env.REVENUECAT_WEBHOOK_AUTHORIZATION,
+    api_url: process.env.REVENUECAT_API_URL || "https://api.revenuecat.com",
+  },
 };

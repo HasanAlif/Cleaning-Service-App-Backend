@@ -31,6 +31,7 @@ export enum PaymentMethod {
   STRIPE_BANK_TRANSFER = "STRIPE_BANK_TRANSFER",
   CREDITS = "CREDITS",
   MIXED = "MIXED", // Card + Credits
+  REVENUECAT_IAP = "REVENUECAT_IAP", // Mobile in-app purchase settled by Apple/Google via RevenueCat
 }
 
 export interface ITransaction extends Document {
@@ -68,6 +69,9 @@ export interface ITransaction extends Document {
   stripePayoutId?: string;
   stripeCustomerId?: string;
   stripeConnectAccountId?: string; // Provider's Stripe Connect account
+
+  // RevenueCat idempotency key — one money row per RevenueCat billing event
+  revenueCatEventId?: string;
 
   // Related records
   bookingId?: mongoose.Types.ObjectId;
@@ -217,6 +221,14 @@ const TransactionSchema = new Schema<ITransaction>(
       index: true,
     },
 
+    // RevenueCat idempotency key (sparse+unique: only RC money rows set it)
+    revenueCatEventId: {
+      type: String,
+      sparse: true,
+      unique: true,
+      index: true,
+    },
+
     // Related records
     bookingId: {
       type: Schema.Types.ObjectId,
@@ -300,7 +312,7 @@ const TransactionSchema = new Schema<ITransaction>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Compound indexes for efficient queries
@@ -332,7 +344,7 @@ TransactionSchema.methods.markCompleted = function () {
 // Method to mark as failed
 TransactionSchema.methods.markFailed = function (
   errorMessage: string,
-  errorCode?: string
+  errorCode?: string,
 ) {
   this.status = TransactionStatus.FAILED;
   this.failedAt = new Date();
@@ -345,7 +357,7 @@ TransactionSchema.methods.markFailed = function (
 TransactionSchema.methods.markRefunded = function (
   refundId: string,
   refundAmount: number,
-  reason?: string
+  reason?: string,
 ) {
   this.status = TransactionStatus.REFUNDED;
   this.refundId = refundId;
@@ -364,5 +376,5 @@ TransactionSchema.statics.generateTransactionId = function () {
 
 export const Transaction = mongoose.model<ITransaction>(
   "Transaction",
-  TransactionSchema
+  TransactionSchema,
 );

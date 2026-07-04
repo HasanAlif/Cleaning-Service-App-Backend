@@ -37,6 +37,17 @@ export interface ISubscription extends Document {
   autoRenew: boolean;
   cancelledAt?: Date;
   cancellationReason?: string;
+  // RevenueCat (mobile in-app purchase) fields — optional so existing Stripe rows are untouched
+  provider?: "stripe" | "revenuecat";
+  revenueCatAppUserId?: string; // = User._id string; RevenueCat app_user_id
+  revenueCatOriginalTransactionId?: string; // stable identity across renewals
+  revenueCatEntitlementId?: string;
+  revenueCatProductId?: string;
+  store?: string; // app_store | play_store | ...
+  isSandbox?: boolean;
+  unsubscribeDetectedAt?: Date;
+  billingIssuesDetectedAt?: Date;
+  gracePeriodExpiresDate?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -144,10 +155,51 @@ const SubscriptionSchema = new Schema<ISubscription>(
       type: String,
       trim: true,
     },
+    // RevenueCat (mobile in-app purchase) fields
+    provider: {
+      type: String,
+      enum: ["stripe", "revenuecat"],
+    },
+    revenueCatAppUserId: {
+      type: String,
+      trim: true,
+      sparse: true,
+      index: true,
+    },
+    revenueCatOriginalTransactionId: {
+      type: String,
+      trim: true,
+      sparse: true,
+      index: true,
+    },
+    revenueCatEntitlementId: {
+      type: String,
+      trim: true,
+    },
+    revenueCatProductId: {
+      type: String,
+      trim: true,
+    },
+    store: {
+      type: String,
+      trim: true,
+    },
+    isSandbox: {
+      type: Boolean,
+    },
+    unsubscribeDetectedAt: {
+      type: Date,
+    },
+    billingIssuesDetectedAt: {
+      type: Date,
+    },
+    gracePeriodExpiresDate: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Indexes for query performance
@@ -156,5 +208,5 @@ SubscriptionSchema.index({ endDate: 1, status: 1 });
 
 export const Subscription = mongoose.model<ISubscription>(
   "Subscription",
-  SubscriptionSchema
+  SubscriptionSchema,
 );

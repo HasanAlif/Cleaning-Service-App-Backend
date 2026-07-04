@@ -325,7 +325,7 @@ const getBookingPaymentHistory = async (
   options: {
     page?: number;
     limit?: number;
-  } = {}
+  } = {},
 ) => {
   const page = options.page || 1;
   const limit = options.limit || 20;
@@ -381,7 +381,7 @@ const getBookingPaymentHistory = async (
 
 const searchForBookingPaymentHistory = async (
   searchTerm: string,
-  options: { page?: number; limit?: number } = {}
+  options: { page?: number; limit?: number } = {},
 ) => {
   const { page = 1, limit = 20 } = options;
 
@@ -455,14 +455,14 @@ const searchForBookingPaymentHistory = async (
       "ownerEmail",
       "providerEmail",
       "transactionId",
-    ])
+    ]),
   );
 
   // Apply pagination using centralized helper
   const { results: paginatedTransactions, pagination } = paginateResults(
     sortedTransactions,
     page,
-    limit
+    limit,
   );
 
   return {
@@ -475,7 +475,7 @@ const paymentTracking = async (
   options: {
     page?: number;
     limit?: number;
-  } = {}
+  } = {},
 ) => {
   const page = options.page || 1;
   const limit = options.limit || 20;
@@ -523,12 +523,211 @@ const paymentTracking = async (
   };
 };
 
+// Record a subscription payment settled through RevenueCat mobile IAP (Apple/Google).
+// Idempotent per RevenueCat billing event via the unique `revenueCatEventId`.
+const recordRevenueCatSubscriptionPayment = async (data: {
+  userId: string;
+  plan: string;
+  subscriptionId?: string;
+  eventId: string; // RevenueCat event.id — idempotency key
+  eventType: string; // INITIAL_PURCHASE | RENEWAL | NON_RENEWING_PURCHASE
+  isRenewal: boolean; // → SUBSCRIPTION_RENEWAL vs SUBSCRIPTION_PURCHASE
+  amount: number; // gross EUR (PLAN_PRICES[plan])
+  completedAt: Date; // derived from event_timestamp_ms
+  storeTransactionId?: string;
+  originalTransactionId?: string;
+  metadata?: Record<string, any>; // real store price/currency/commission/tax/env/store
+}) => {
+  const user = await User.findById(data.userId).select("userName role");
+
+  if (!user) {
+    throw new Error("User not found for transaction recording");
+  }
+
+  try {
+    const transaction = await Transaction.create({
+      transactionId: (Transaction as any).generateTransactionId(),
+      transactionType: data.isRenewal
+        ? TransactionType.SUBSCRIPTION_RENEWAL
+        : TransactionType.SUBSCRIPTION_PURCHASE,
+      status: TransactionStatus.COMPLETED,
+
+      // Payer (Provider buying subscription)
+      payerId: data.userId,
+      payerName: user.userName,
+      payerRole: user.role,
+
+      // Receiver (Platform/Admin)
+      receiverName: "Platform",
+      receiverRole: "ADMIN",
+
+      // Amounts — gross EUR list price, mirroring the retired Stripe-era row
+      amount: data.amount,
+      currency: "EUR",
+      netAmount: data.amount,
+      paymentMethod: PaymentMethod.REVENUECAT_IAP,
+
+      // Related records + idempotency key
+      subscriptionId: data.subscriptionId as any,
+      revenueCatEventId: data.eventId,
+
+      description: `${data.plan} subscription ${
+        data.isRenewal ? "renewal" : "purchase"
+      } via RevenueCat`,
+      completedAt: data.completedAt,
+      metadata: {
+        ...(data.metadata || {}),
+        plan: data.plan,
+        revenueCatEventId: data.eventId,
+        eventType: data.eventType,
+        transactionId: data.storeTransactionId,
+        originalTransactionId: data.originalTransactionId,
+      },
+    });
+
+    return transaction;
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      // Already recorded this billing event — idempotent no-op
+      return Transaction.findOne({ revenueCatEventId: data.eventId });
+    }
+    throw error;
+  }
+};
+
+// Record an ACTUAL RevenueCat refund (CANCELLATION + cancel_reason CUSTOMER_SUPPORT).
+// Creates a SUBSCRIPTION_REFUND audit row AND flips the matched original payment to
+// REFUNDED so the COMPLETED-only earnings aggregation nets down (mirrors recordBookingRefund).
+const recordRevenueCatSubscriptionRefund = async (data: {
+  userId: string;
+  plan?: string;
+  eventId: string; // RevenueCat event.id — idempotency key
+  amount: number; // gross EUR fallback; original row amount preferred
+  refundedAt: Date;
+  storeTransactionId?: string;
+  originalTransactionId?: string;
+  metadata?: Record<string, any>;
+}) => {
+  const user = await User.findById(data.userId).select("userName role");
+
+  if (!user) {
+    throw new Error("User not found for transaction recording");
+  }
+
+  // Deterministically match the original payment by store transaction id when possible.
+  const idMatches: any[] = [];
+  for (const id of [data.storeTransactionId, data.originalTransactionId]) {
+    if (id) {
+      idMatches.push({ "metadata.transactionId": id });
+      idMatches.push({ "metadata.originalTransactionId": id });
+    }
+  }
+
+  const findOriginal = async () => {
+    if (idMatches.length > 0) {
+      const matched = await Transaction.findOne({
+        payerId: data.userId,
+        transactionType: {
+          $in: [
+            TransactionType.SUBSCRIPTION_PURCHASE,
+            TransactionType.SUBSCRIPTION_RENEWAL,
+          ],
+        },
+        status: TransactionStatus.COMPLETED,
+        $or: idMatches,
+      }).sort({ createdAt: -1 });
+      if (matched) return matched;
+    }
+    // Fallback: latest COMPLETED subscription payment for this payer
+    return Transaction.findOne({
+      payerId: data.userId,
+      transactionType: {
+        $in: [
+          TransactionType.SUBSCRIPTION_PURCHASE,
+          TransactionType.SUBSCRIPTION_RENEWAL,
+        ],
+      },
+      status: TransactionStatus.COMPLETED,
+    }).sort({ createdAt: -1 });
+  };
+
+  let originalTransaction = await findOriginal();
+  const rowAmount = originalTransaction?.amount ?? data.amount;
+
+  let refundTransaction;
+  try {
+    refundTransaction = await Transaction.create({
+      transactionId: (Transaction as any).generateTransactionId(),
+      transactionType: TransactionType.SUBSCRIPTION_REFUND,
+      status: TransactionStatus.COMPLETED,
+
+      // Keep the same orientation as the purchase row (provider ↔ Platform)
+      payerId: data.userId,
+      payerName: user.userName,
+      payerRole: user.role,
+      receiverName: "Platform",
+      receiverRole: "ADMIN",
+
+      amount: rowAmount,
+      currency: "EUR",
+      netAmount: rowAmount,
+      paymentMethod: PaymentMethod.REVENUECAT_IAP,
+
+      revenueCatEventId: data.eventId,
+      originalTransactionId: originalTransaction?._id as any,
+      refundAmount: rowAmount,
+      refundDate: data.refundedAt,
+      refundReason: "RevenueCat store refund (CUSTOMER_SUPPORT)",
+
+      description: `${data.plan || "Subscription"} refund via RevenueCat`,
+      completedAt: data.refundedAt,
+      metadata: {
+        ...(data.metadata || {}),
+        plan: data.plan,
+        revenueCatEventId: data.eventId,
+        eventType: "CANCELLATION",
+        cancelReason: "CUSTOMER_SUPPORT",
+      },
+    });
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      // Refund already recorded — recover the linked original to finish netting if needed
+      refundTransaction = await Transaction.findOne({
+        revenueCatEventId: data.eventId,
+      });
+      originalTransaction = refundTransaction?.originalTransactionId
+        ? await Transaction.findById(refundTransaction.originalTransactionId)
+        : originalTransaction;
+    } else {
+      throw error;
+    }
+  }
+
+  // Net out: flip the original payment to REFUNDED (COMPLETED-only sums then exclude it).
+  if (
+    originalTransaction &&
+    originalTransaction.status === TransactionStatus.COMPLETED
+  ) {
+    await Transaction.findByIdAndUpdate(originalTransaction._id, {
+      status: TransactionStatus.REFUNDED,
+      refundId: data.eventId,
+      refundAmount: rowAmount,
+      refundDate: data.refundedAt,
+      refundReason: "RevenueCat store refund (CUSTOMER_SUPPORT)",
+    });
+  }
+
+  return refundTransaction;
+};
+
 export const transactionService = {
   recordSubscriptionPurchase,
   recordBookingPayment,
   recordBookingRefund,
   recordCreditRedemption,
   recordCreditEarned,
+  recordRevenueCatSubscriptionPayment,
+  recordRevenueCatSubscriptionRefund,
   getBookingPaymentHistory,
   searchForBookingPaymentHistory,
   paymentTracking,
